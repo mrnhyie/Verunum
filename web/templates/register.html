@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <title>Activate organisation · Verunum</title>
+</head>
+<body class="login">
+  <main class="registration mono-card" style="border-radius: 20px; padding: 40px;">
+    <div class="auth-brand" style="justify-content: center; margin-bottom: 20px;">
+      <span class="brand-mark">V</span>
+      <strong style="font-size: 20px;">verunum</strong>
+    </div>
+
+    <h1 style="text-align: center; font-size: 24px; margin-bottom: 4px;">Activate your organisation</h1>
+    <p style="text-align: center; color: var(--muted); margin: 0 0 24px; font-size: 13px;">Use the unique company code supplied with your device to establish your secure workspace.</p>
+
+    <form method="post" action="/auth/register">
+      <fieldset>
+        <legend>Organisation details</legend>
+        <label>Organisation name
+          <input name="organization_name" required autocomplete="organization" placeholder="e.g. Bright Future Academy">
+        </label>
+        <label>Organisation type
+          <select name="organization_type" required>
+            <option value="" disabled selected>Select type</option>
+            <option value="school">School</option>
+            <option value="church">Church</option>
+            <option value="company">Company</option>
+            <option value="home">Home</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Organisation phone <span class="optional">Optional</span>
+          <input name="organization_phone" type="tel" placeholder="+233...">
+        </label>
+        <label>Location <span class="optional">Optional</span>
+          <input name="organization_location" placeholder="City, area or branch">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Account owner</legend>
+        <label>Company access code
+          <input name="access_code" required autocomplete="off" placeholder="e.g. VERUNUM-XXXX-01">
+        </label>
+        <label>Your name
+          <input name="full_name" required autocomplete="name">
+        </label>
+        <label>Work email
+          <input name="email" type="email" required autocomplete="email">
+        </label>
+        <label>Password
+          <input name="password" type="password" minlength="8" required autocomplete="new-password">
+        </label>
+        <label>Confirm password
+          <input name="confirm_password" type="password" minlength="8" required autocomplete="new-password">
+        </label>
+      </fieldset>
+
+      <button type="submit" class="btn-pill btn-pill-primary" style="width: 100%; padding: 12px;">Create organisation account</button>
+
+      {{if .Error}}<div class="alert-banner error" style="margin-top: 16px; font-size: 12px;">{{.Error}}</div>{{end}}
+    </form>
+
+    <p class="auth-foot">Already have an account? <a href="/login">Sign in</a></p>
+
+    <div style="margin-top: 12px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: var(--muted);">
+      Demo code: <strong style="color: var(--ink);">VERUNUM-DEMO-01</strong>
+    </div>
+  </main>
+</body>
+</html>

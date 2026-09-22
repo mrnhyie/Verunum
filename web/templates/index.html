@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verunum - Modern Biometric Access Control</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <style>
+    /* Landing Page Specific Styles */
+    body {
+      background: var(--canvas);
+    }
+    .landing-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 48px;
+      max-width: 1420px;
+      margin: 0 auto;
+    }
+    .hero {
+      text-align: center;
+      padding: 100px 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .hero h1 {
+      font-size: 56px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+      line-height: 1.1;
+      margin-bottom: 24px;
+    }
+    .hero p {
+      font-size: 20px;
+      color: var(--ink-secondary);
+      margin-bottom: 40px;
+      font-weight: 500;
+      line-height: 1.6;
+    }
+    .device-preview {
+      margin: 60px auto;
+      max-width: 800px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: 8px 8px 0px rgba(9, 9, 11, 1);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 400px;
+      position: relative;
+    }
+    .device-mockup {
+      width: 200px;
+      height: 320px;
+      background: #09090b;
+      border-radius: 20px;
+      border: 4px solid #3f3f46;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    }
+    .device-mockup svg { width: 64px; height: 64px; margin-bottom: 16px; color: var(--emerald); }
+    
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      max-width: 1200px;
+      margin: 80px auto;
+      padding: 0 48px;
+    }
+    .feature-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px 32px;
+      text-align: left;
+      box-shadow: var(--shadow-md);
+      transition: transform 0.2s;
+    }
+    .feature-card:hover {
+      transform: translateY(-4px);
+    }
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      background: var(--emerald-bg);
+      color: var(--emerald-ink);
+      border: 1px solid var(--emerald-border);
+      border-radius: var(--radius-md);
+      display: grid;
+      place-items: center;
+      margin-bottom: 24px;
+    }
+    .feature-icon svg { width: 24px; height: 24px; }
+    .feature-card h3 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--ink);
+      margin-bottom: 12px;
+    }
+    .feature-card p {
+      font-size: 15px;
+      color: var(--ink-secondary);
+      line-height: 1.5;
+    }
+    
+    .flow-section {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 100px 48px;
+      text-align: center;
+    }
+    .flow-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      max-width: 1200px;
+      margin: 60px auto 0;
+    }
+    .flow-step {
+      text-align: center;
+    }
+    .flow-num {
+      width: 40px;
+      height: 40px;
+      background: var(--ink);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      margin: 0 auto 20px;
+    }
+    .flow-step h4 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
+    .flow-step p { font-size: 14px; color: var(--ink-secondary); }
+    
+    .footer {
+      text-align: center;
+      padding: 60px;
+      color: var(--ink-secondary);
+      font-size: 14px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="landing-header">
+    <a class="brand" href="/" style="font-size: 20px;">
+      <span class="brand-mark" style="width: 32px; height: 32px; font-size: 16px;">V</span>
+      <span>verunum</span>
+    </a>
+    <div style="display: flex; gap: 16px;">
+      <a href="/login" class="btn-pill btn-pill-secondary">Sign In</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Biometric access control, modernized.</h1>
+      <p>Secure your workspaces with zero-touch provisioning, real-time telemetry, and resilient offline capabilities. The Verunum platform pairs flawlessly with the TAB5 hardware for an unparalleled attendance experience.</p>
+      <a href="/login" class="primary-action" style="font-size: 16px; padding: 16px 32px;">
+        Access Dashboard
+        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+
+      <!-- Device Advert / Preview -->
+      <div class="device-preview">
+        <div style="position:absolute; top:40px; left:60px; text-align:left;">
+          <h2 style="font-size:28px; font-weight:900; margin-bottom:12px;">Meet the TAB5</h2>
+          <p style="color:var(--ink-secondary); max-width:280px; font-size:15px; font-weight:500;">
+            Equipped with the R503 fingerprint sensor, the TAB5 maintains high-speed local matching and synchronizes seamlessly via secure WebSockets.
+          </p>
+        </div>
+        <div class="device-mockup" style="margin-left: 300px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <div style="font-size:12px; font-weight:700; letter-spacing:0.1em; color:#a1a1aa; margin-top:8px;">READY</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3>Bank-Grade Security</h3>
+        <p>No raw fingerprint templates ever leave the local terminal. Authentication uses cryptographic device keys with zero-touch binding.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:var(--amber-bg); color:var(--amber-ink); border-color:var(--amber-border);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3>Real-time WebSockets</h3>
+        <p>A persistent bidirectional channel ensures instant remote enrollments, immediate attendance tracking, and live device status.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:var(--surface); color:var(--ink); border-color:var(--border);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3>Offline Resilience</h3>
+        <p>Network down? The terminal queues all attendance events locally with unique IDs and syncs flawlessly once reconnected.</p>
+      </div>
+    </section>
+
+    <section class="flow-section">
+      <h2 style="font-size: 36px; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 16px;">How It Works</h2>
+      <p style="font-size: 18px; color: var(--ink-secondary); max-width: 600px; margin: 0 auto;">A seamless end-to-end flow from platform registration to daily attendance.</p>
+      
+      <div class="flow-grid">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <h4>Provision</h4>
+          <p>Register the MAC address on the dashboard. The device boots up and securely binds itself.</p>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <h4>Enroll</h4>
+          <p>Admins trigger a remote enrollment command. Employees place their finger on the terminal.</p>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <h4>Verify</h4>
+          <p>Daily check-ins happen in milliseconds locally, maintaining high throughput at main gates.</p>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <h4>Monitor</h4>
+          <p>Live attendance events and terminal health metrics appear on your platform dashboard.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    &copy; 2026 Verunum Platform. Built for hardware integrity and scale.
+  </footer>
+</body>
+</html>

@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}} · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/dashboard">
+      <span class="brand-mark">V</span>
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">{{if .IsStaff}}/ Platform Administration{{else}}/ Attendance Intelligence{{end}}</span>
+    <div class="topbar-actions">
+      <label class="section-search" style="margin-bottom:0; border-bottom:0; padding-left:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-pill);">
+        <svg viewBox="0 0 24 24" style="color:#71717a; margin:0;"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+        <input placeholder="Search workspaces..." style="color:#09090b; padding:8px 14px;">
+      </label>
+      <button class="icon-button" aria-label="Notifications" style="color:#71717a;">
+        <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+      </button>
+      <span class="avatar">{{if .IsStaff}}SA{{else}}DA{{end}}</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out" aria-label="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  {{if .IsStaff}}
+  <aside class="sidebar" style="background:#ffffff; border-right:1px solid #e4e4e7;">
+    <p class="rail-label" style="color:#71717a;">Platform</p>
+    <a class="rail-link active" href="/dashboard" style="background:#09090b; color:#ffffff;">
+      <svg viewBox="0 0 24 24" style="color:#ffffff;"><path d="m3 13 9-9 9 9v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      Dashboard
+    </a>
+    <p class="rail-label" style="color:#71717a;">Customer Workspaces</p>
+    <a class="rail-link" href="/platform/organisations" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5M10 10h4"/></svg>
+      Organisations
+    </a>
+    <a class="rail-link" href="/platform/device-provisioning" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+      Device Provisioning
+    </a>
+    <a class="rail-link" href="/admin/organizations/new" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New Organisation
+    </a>
+    <div class="rail-footer">
+      <form class="rail-logout" action="/auth/logout" method="post">
+        <button type="submit" style="color:#71717a;">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+          Log out
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="dashboard-main">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow" style="color:#71717a;">Platform Overview</p>
+        <h1 style="color:#09090b; font-weight:800;">Good morning, Administrator.</h1>
+        <p class="subtle" style="color:#71717a;">Monitor customer workspaces, inspect live hardware terminals, and trigger auto-provisioning.</p>
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <a class="btn-pill btn-pill-secondary" href="/platform/device-provisioning">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+          Provision Device
+        </a>
+        <a class="btn-pill btn-pill-primary" href="/admin/organizations/new">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 5v14M5 12h14"/></svg>
+          New Organisation
+        </a>
+      </div>
+    </div>
+
+    <section class="metric-grid">
+      <article class="mono-card metric-card">
+        <div class="metric-icon mint">
+          <svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>
+        </div>
+        <div>
+          <span>Organisations</span>
+          <strong>{{.Organizations}}</strong>
+          <small>Active workspaces</small>
+        </div>
+      </article>
+
+      <article class="mono-card metric-card">
+        <div class="metric-icon violet">
+          <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg>
+        </div>
+        <div>
+          <span>Provisioned Devices</span>
+          <strong>{{.Devices}}</strong>
+          <small>Terminals across all customers</small>
+        </div>
+      </article>
+
+      <article class="mono-card metric-card">
+        <div class="metric-icon peach">
+          <svg viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        </div>
+        <div>
+          <span>Pending Activation</span>
+          <strong>{{.Pending}}</strong>
+          <small>Initial setups awaiting first login</small>
+        </div>
+      </article>
+    </section>
+
+    <section class="mono-card">
+      <div class="panel-heading" style="padding: 20px 24px; border-bottom: 1px solid #e4e4e7;">
+        <div>
+          <h2 style="font-size: 16px; font-weight: 700; color: #09090b;">Customer Organisations</h2>
+          <p style="margin: 2px 0 0; color: #71717a; font-size: 12px;">Workspaces with live device telemetry</p>
+        </div>
+        <a href="/platform/organisations" class="btn-pill btn-pill-secondary" style="padding: 6px 14px; font-size: 12px;">All organisations →</a>
+      </div>
+      <div class="event-list">
+        {{range .OrganizationList}}
+        <div class="event-row" style="cursor: pointer;" onclick="window.location.href='/platform/organisations/{{.ID}}';">
+          <div class="event-avatar" style="background: #f4f4f5; color: #09090b; border-radius: 50%;">
+            <svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>
+          </div>
+          <div class="event-person">
+            <strong style="color: #09090b; font-size: 14px;">{{.Name}}</strong>
+            <span style="color: #71717a;">{{.Type}} · {{if .Admin}}{{.Admin}}{{else}}Admin pending{{end}}</span>
+          </div>
+          <span class="badge-pill" style="margin-left: auto;">
+            {{.Devices}} devices
+          </span>
+        </div>
+        {{else}}
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          <p>No customer organisations have been provisioned yet.</p>
+        </div>
+        {{end}}
+      </div>
+    </section>
+  </main>
+
+  {{else}}
+  <!-- Customer Admin View -->
+  <aside class="sidebar" style="background:#ffffff; border-right:1px solid #e4e4e7;">
+    <p class="rail-label" style="color:#71717a;">Workspace</p>
+    <a class="rail-link active" href="/dashboard" style="background:#09090b; color:#ffffff;">
+      <svg viewBox="0 0 24 24" style="color:#ffffff;"><path d="m3 13 9-9 9 9v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      Dashboard
+    </a>
+    <p class="rail-label" style="color:#71717a;">Management</p>
+    <a class="rail-link" href="/users" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a5 5 0 0 1 10 0v2M16 11l2 2 3-4"/></svg>
+      Staff
+    </a>
+    <a class="rail-link" href="/devices" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6M9 17h6"/></svg>
+      Devices
+    </a>
+    <a class="rail-link" href="/rfid-cards" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>
+      RFID cards
+    </a>
+    <p class="rail-label" style="color:#71717a;">Operations</p>
+    <a class="rail-link" href="/attendance" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+      Attendance
+    </a>
+    <a class="rail-link" href="/reports/daily" style="color:#52525b;">
+      <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-7"/></svg>
+      Reports
+    </a>
+    <div class="rail-footer">
+      <form class="rail-logout" action="/auth/logout" method="post">
+        <button type="submit" style="color:#71717a;">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+          Log out
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="dashboard-main">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow" style="color:#71717a;">Workspace Attendance</p>
+        <h1 style="color:#09090b; font-weight:800;">Good morning, Administrator.</h1>
+        <p class="subtle" style="color:#71717a;">Here is how attendance is looking across your organisation today.</p>
+      </div>
+      <a class="btn-pill btn-pill-primary" href="/attendance">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 5v14M5 12h14"/></svg>
+        View Attendance
+      </a>
+    </div>
+
+    <section class="metric-grid">
+      <article class="mono-card metric-card">
+        <div class="metric-icon mint">
+          <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+        </div>
+        <div>
+          <span>Present Today</span>
+          <strong>{{.Present}}</strong>
+          <small>Unique clock-ins recorded</small>
+        </div>
+      </article>
+
+      <article class="mono-card metric-card">
+        <div class="metric-icon peach">
+          <svg viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        </div>
+        <div>
+          <span>Late Arrivals</span>
+          <strong>{{.Late}}</strong>
+          <small>After configured schedule</small>
+        </div>
+      </article>
+
+      <article class="mono-card metric-card">
+        <div class="metric-icon violet">
+          <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg>
+        </div>
+        <div>
+          <span>Terminals Online</span>
+          <strong>{{.Online}}</strong>
+          <small>Ready to receive scans</small>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="mono-card">
+        <div class="panel-heading" style="padding: 20px 24px; border-bottom: 1px solid #e4e4e7;">
+          <div>
+            <h2 style="font-size: 16px; font-weight: 700; color: #09090b;">Recent Activity</h2>
+            <p style="margin: 2px 0 0; color: #71717a; font-size: 12px;">Latest verified attendance events</p>
+          </div>
+          <a href="/attendance" class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px;">All activity →</a>
+        </div>
+        <div class="event-list">
+          {{range .Events}}
+          <div class="event-row">
+            <div class="event-avatar" style="background: #f4f4f5; color: #09090b; border-radius: 50%;">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+            </div>
+            <div class="event-person">
+              <strong style="color: #09090b;">{{.Name}}</strong>
+              <span style="color: #71717a;">{{.Event}} · {{.Time}}</span>
+            </div>
+            <span class="badge-pill {{if eq .Status "on_time"}}active{{else}}warning{{end}}">
+              {{.Status}}
+            </span>
+          </div>
+          {{else}}
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+            <p>No attendance events have arrived today.</p>
+          </div>
+          {{end}}
+        </div>
+      </article>
+
+      <article class="mono-card" style="padding: 24px; display: flex; flex-direction: column; gap: 14px;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #09090b;">Quick Actions</h2>
+        <p style="margin: 0 0 10px; color: #71717a; font-size: 12px;">Keep operations moving seamlessly</p>
+
+        <a class="quick-action" href="/users" style="border: 1px solid #e4e4e7; border-radius: 12px;">
+          <span class="quick-icon">+</span>
+          <span>
+            <strong>Add a person</strong>
+            <small>Create a profile & enroll fingerprint</small>
+          </span>
+          <b>→</b>
+        </a>
+
+        <a class="quick-action" href="/devices" style="border: 1px solid #e4e4e7; border-radius: 12px;">
+          <span class="quick-icon">⌁</span>
+          <span>
+            <strong>Manage devices</strong>
+            <small>Review terminal telemetry & commands</small>
+          </span>
+          <b>→</b>
+        </a>
+
+        <a class="quick-action" href="/reports/daily" style="border: 1px solid #e4e4e7; border-radius: 12px;">
+          <span class="quick-icon">↗</span>
+          <span>
+            <strong>Download report</strong>
+            <small>Export today’s scan records</small>
+          </span>
+          <b>→</b>
+        </a>
+      </article>
+    </section>
+  </main>
+  {{end}}
+</body>
+</html>

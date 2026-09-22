@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>People & Staff · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/dashboard">
+      <span class="brand-mark">V</span>
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Management / People</span>
+    <div class="topbar-actions">
+      <span class="avatar">DA</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <aside class="sidebar" style="background:#ffffff; border-right:1px solid #e4e4e7;">
+    <p class="rail-label" style="color:#71717a;">Workspace</p>
+    <a class="rail-link" href="/dashboard" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg> Dashboard</a>
+    <p class="rail-label" style="color:#71717a;">Management</p>
+    <a class="rail-link active" href="/users" style="background:#09090b; color:#ffffff;"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14c2.3.7 4 2.9 4 5.5"/></svg> People</a>
+    <a class="rail-link" href="/devices" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
+    <a class="rail-link" href="/rfid-cards" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
+    <p class="rail-label" style="color:#71717a;">Operations</p>
+    <a class="rail-link" href="/attendance" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
+  </aside>
+
+  <main class="dashboard-main list-page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow" style="color:#71717a;">Management</p>
+        <h1 style="color:#09090b; font-weight:800;">People & Staff</h1>
+        <p class="subtle" style="color:#71717a;">Manage profiles, roles, and biometric credentials in your organisation.</p>
+      </div>
+      <a class="btn-pill btn-pill-primary" href="/users/new">
+        <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add person
+      </a>
+    </div>
+
+    <section class="mono-card">
+      <div style="padding:18px 24px; border-bottom:1px solid #e4e4e7; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong style="color:#09090b; font-size:15px;">All Members</strong>
+          <span class="badge-pill">{{len .Users}}</span>
+        </div>
+        <div class="people-filters">
+          <form class="section-search" onsubmit="return false" >
+            <svg viewBox="0 0 24 24" style="color:#71717a;"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+            <input id="peopleSearch" value="{{.Query}}" placeholder="Search by name or email..." style="color:#09090b;">
+          </form>
+          <select id="roleFilter" style="background:#fff; border-color:#e4e4e7; color:#09090b; border-radius:9999px; padding:6px 14px;">
+            <option value="">All roles</option>
+            <option>teacher</option>
+            <option>hr_admin</option>
+            <option>school_admin</option>
+            <option>org_admin</option>
+            <option>viewer</option>
+          </select>
+          <select id="statusFilter" style="background:#fff; border-color:#e4e4e7; color:#09090b; border-radius:9999px; padding:6px 14px;">
+            <option value="">All statuses</option>
+            <option>active</option>
+            <option>inactive</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table" id="peopleTable" style="background:#ffffff;">
+          <thead>
+            <tr>
+              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Person</th>
+              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Role</th>
+              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Fingerprint</th>
+              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Status</th>
+              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7; text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Users}}
+            <tr data-search="{{.Name}} {{.Email}} {{.Role}} {{.Status}}" data-role="{{.Role}}" data-status="{{.Status}}">
+              <td style="border-bottom:1px solid #e4e4e7;">
+                <div class="person-cell">
+                  <div style="width:34px; height:34px; border-radius:50%; background:#f4f4f5; border:1px solid #e4e4e7; display:grid; place-items:center; font-weight:700; color:#09090b;">
+                    {{printf "%.1s" .Name}}
+                  </div>
+                  <div>
+                    <strong style="color:#09090b;">{{.Name}}</strong>
+                    <small style="color:#71717a;">{{.Email}}</small>
+                  </div>
+                </div>
+              </td>
+              <td style="border-bottom:1px solid #e4e4e7;">
+                <span class="badge-pill" style="font-size:10px;">{{.Role}}</span>
+              </td>
+              <td style="border-bottom:1px solid #e4e4e7;">
+                <span class="badge-pill {{if eq .Fingerprint "enrolled"}}active{{else}}offline{{end}}">
+                  {{if eq .Fingerprint "enrolled"}}
+                  <svg viewBox="0 0 24 24" style="width:12px;height:12px;color:#047857;"><path d="M20 6L9 17l-5-5"/></svg>
+                  Enrolled
+                  {{else}}
+                  Not enrolled
+                  {{end}}
+                </span>
+              </td>
+              <td style="border-bottom:1px solid #e4e4e7;">
+                <span class="badge-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
+                  <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
+                  {{.Status}}
+                </span>
+              </td>
+              <td class="row-actions" style="border-bottom:1px solid #e4e4e7; justify-content:flex-end;">
+                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px;" href="/users/{{.ID}}">Enroll</a>
+                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px;" href="/attendance?user_id={{.ID}}">Logs</a>
+                <button type="button" class="btn-pill btn-pill-secondary edit-person" style="padding:4px 12px; font-size:11px;" data-id="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-phone="{{.Phone}}" data-role="{{.Role}}" data-status="{{.Status}}" data-fingerprint="{{.Fingerprint}}">Edit</button>
+                <form method="post" action="/users/{{.ID}}?_method=DELETE" style="margin:0;">
+                  <button class="btn-pill btn-pill-danger" style="padding:4px 12px; font-size:11px;" onclick="return confirm('Deactivate this person?')">Deactivate</button>
+                </form>
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="5" class="table-empty" style="padding:60px 20px; color:#71717a;">
+                No members found. Add your first member to begin.
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- PART 3: 2-COLUMN INTERACTIVE BIOMETRIC ADD USER MODAL -->
+  <dialog id="personModal" class="modal modal-2col">
+    <div class="modal-header-bar">
+      <h2 id="modalTitle">Add person & biometric enrollment</h2>
+      <button type="button" class="modal-close-btn" onclick="document.getElementById('personModal').close()">✕</button>
+    </div>
+
+    <form id="personForm" method="post" action="/users" onsubmit="handleUserFormSubmit(event)">
+      <div class="modal-2col-body">
+        <!-- LEFT COLUMN: User Form Inputs -->
+        <div class="modal-col-left">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <label>
+              First name
+              <input name="first_name" id="personFirstName" placeholder="e.g. Ama" required oninput="syncFullName()">
+            </label>
+            <label>
+              Last name
+              <input name="last_name" id="personLastName" placeholder="e.g. Mensah" required oninput="syncFullName()">
+            </label>
+          </div>
+          <input type="hidden" name="full_name" id="personName">
+
+          <label id="emailField">
+            Email address
+            <input name="email" id="personEmail" type="email" placeholder="ama@example.com">
+          </label>
+
+          <label>
+            Phone number
+            <input name="phone" id="personPhone" placeholder="+233...">
+          </label>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <label>
+              Role
+              <select name="role" id="personRole">
+                <option value="viewer">Viewer</option>
+                <option value="teacher">Teacher</option>
+                <option value="hr_admin">HR admin</option>
+                <option value="school_admin">School admin</option>
+                <option value="org_admin">Organisation admin</option>
+              </select>
+            </label>
+
+            <label id="statusLabel">
+              Status
+              <select name="status" id="personStatus">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Assigned Device Terminal
+            <select id="modalDeviceSelect">
+              {{range .Devices}}
+              <option value="{{.ID}}">{{.Name}} · {{if .Connected}}online{{else}}{{.Status}}{{end}}</option>
+              {{else}}
+              <option value="">No hardware terminals configured</option>
+              {{end}}
+            </select>
+          </label>
+
+          <input type="hidden" name="fingerprint_status" id="personFingerprint" value="not_enrolled">
+        </div>
+
+        <!-- RIGHT COLUMN: Interactive Fingerprint Scanner Widget -->
+        <div class="modal-col-right">
+          <div class="biometric-scanner-card">
+            <div id="scannerGlyphBox" class="scanner-glyph-box state-idle">
+              <svg id="fpIcon" viewBox="0 0 24 24">
+                <path d="M12 11c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z"/>
+                <path d="M19 11c0 3.87-3.13 7-7 7s-7-3.13-7-7 3.13-7 7-7 7 3.13 7 7z"/>
+                <path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5"/>
+                <path d="M21.95 13A10 10 0 0 0 12 2"/>
+                <path d="M17.8 19.5A9.97 9.97 0 0 0 22 12"/>
+              </svg>
+            </div>
+
+            <div>
+              <strong id="scannerStatusTitle" style="font-size: 15px; color:#09090b; display:block;">Fingerprint Enrollment</strong>
+              <div id="scannerStatusMsg" class="scanner-status-label">Click button to begin scan on selected device...</div>
+            </div>
+
+            <button type="button" id="requestScanBtn" class="btn-pill btn-pill-primary" onclick="requestFingerprintScan()">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 11c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z"/><circle cx="12" cy="12" r="10"/></svg>
+              Click to Request Fingerprint
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer-bar">
+        <button type="button" class="btn-pill btn-pill-secondary" onclick="document.getElementById('personModal').close()">Cancel</button>
+        <button type="submit" id="saveUserBtn" class="btn-pill btn-pill-primary">Save User</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    // Search & Filter
+    const search = document.getElementById('peopleSearch');
+    const role = document.getElementById('roleFilter');
+    const status = document.getElementById('statusFilter');
+    function filter() {
+      document.querySelectorAll('#peopleTable tbody tr[data-search]').forEach(r => {
+        const matchesSearch = r.dataset.search.toLowerCase().includes(search.value.toLowerCase());
+        const matchesRole = !role.value || r.dataset.role === role.value;
+        const matchesStatus = !status.value || r.dataset.status === status.value;
+        r.hidden = !(matchesSearch && matchesRole && matchesStatus);
+      });
+    }
+    [search, role, status].forEach(x => x.addEventListener('input', filter));
+
+    // Modal & Biometric State Machine
+    const modal = document.getElementById('personModal');
+    const form = document.getElementById('personForm');
+    let activeEnrollUserUUID = null;
+    let sseEnrollSource = null;
+
+    function syncFullName() {
+      const first = document.getElementById('personFirstName').value.trim();
+      const last = document.getElementById('personLastName').value.trim();
+      document.getElementById('personName').value = (first + ' ' + last).trim();
+    }
+
+    function resetScannerUI() {
+      const box = document.getElementById('scannerGlyphBox');
+      box.className = 'scanner-glyph-box state-idle';
+      document.getElementById('scannerStatusTitle').textContent = 'Fingerprint Enrollment';
+      const msg = document.getElementById('scannerStatusMsg');
+      msg.textContent = 'Click button to begin scan on selected device...';
+      msg.className = 'scanner-status-label';
+      document.getElementById('requestScanBtn').disabled = false;
+      document.getElementById('requestScanBtn').style.display = 'inline-flex';
+      document.getElementById('personFingerprint').value = 'not_enrolled';
+    }
+
+    async function requestFingerprintScan() {
+      const devSelect = document.getElementById('modalDeviceSelect');
+      const deviceId = devSelect.value;
+      const statusMsg = document.getElementById('scannerStatusMsg');
+      const glyphBox = document.getElementById('scannerGlyphBox');
+
+      if (!deviceId) {
+        statusMsg.textContent = 'No terminal available for enrollment.';
+        statusMsg.className = 'scanner-status-label error';
+        glyphBox.className = 'scanner-glyph-box state-error';
+        return;
+      }
+
+      // Generate a temporary user uuid if not yet created
+      if (!activeEnrollUserUUID) {
+        activeEnrollUserUUID = 'usr_' + Math.random().toString(36).substring(2, 11);
+      }
+
+      // Set Scanning State
+      glyphBox.className = 'scanner-glyph-box state-scanning';
+      statusMsg.textContent = 'Contacting device scanner...';
+      statusMsg.className = 'scanner-status-label';
+      document.getElementById('requestScanBtn').disabled = true;
+
+      try {
+        const res = await fetch('/api/v1/devices/' + deviceId + '/enroll-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: activeEnrollUserUUID, finger_index: 1 })
+        });
+        const data = await res.json();
+
+        if (res.status === 422) {
+          // Device is offline
+          glyphBox.className = 'scanner-glyph-box state-error';
+          statusMsg.textContent = 'Device is offline.';
+          statusMsg.className = 'scanner-status-label error';
+          document.getElementById('requestScanBtn').disabled = false;
+          return;
+        }
+
+        if (!res.ok) {
+          glyphBox.className = 'scanner-glyph-box state-error';
+          statusMsg.textContent = data.error || 'Failed to trigger device scan.';
+          statusMsg.className = 'scanner-status-label error';
+          document.getElementById('requestScanBtn').disabled = false;
+          return;
+        }
+
+        // 202 Accepted - Terminal in scanning mode
+        glyphBox.className = 'scanner-glyph-box state-scanning';
+        statusMsg.textContent = 'Place finger on R503 sensor now...';
+      } catch (err) {
+        glyphBox.className = 'scanner-glyph-box state-error';
+        statusMsg.textContent = 'Network error: ' + err.message;
+        statusMsg.className = 'scanner-status-label error';
+        document.getElementById('requestScanBtn').disabled = false;
+      }
+    }
+
+    function initUserSSE() {
+      if (sseEnrollSource) sseEnrollSource.close();
+      sseEnrollSource = new EventSource('/api/v1/events');
+
+      sseEnrollSource.addEventListener('user.enrollment_updated', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (!activeEnrollUserUUID || data.user_id === activeEnrollUserUUID) {
+            handleEnrollmentSuccess();
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    function handleEnrollmentSuccess() {
+      const glyphBox = document.getElementById('scannerGlyphBox');
+      glyphBox.className = 'scanner-glyph-box state-success';
+      glyphBox.innerHTML = `
+        <svg viewBox="0 0 24 24" style="color:#10b981;"><path d="M20 6L9 17l-5-5"/></svg>
+      `;
+
+      const msg = document.getElementById('scannerStatusMsg');
+      msg.textContent = 'Fingerprint captured and verified!';
+      msg.className = 'scanner-status-label success';
+      document.getElementById('scannerStatusTitle').textContent = 'Biometric Enrolled';
+      document.getElementById('requestScanBtn').style.display = 'none';
+      document.getElementById('personFingerprint').value = 'enrolled';
+      document.getElementById('saveUserBtn').disabled = false;
+    }
+
+    async function handleUserFormSubmit(e) {
+      syncFullName();
+      // Regular submission proceeds to /users
+    }
+
+    // Edit Person Wiring
+    document.querySelectorAll('.edit-person').forEach(b => b.onclick = () => {
+      document.getElementById('modalTitle').textContent = 'Edit person';
+      form.action = '/users/' + b.dataset.id;
+      const parts = (b.dataset.name || '').split(' ');
+      document.getElementById('personFirstName').value = parts[0] || '';
+      document.getElementById('personLastName').value = parts.slice(1).join(' ') || '';
+      document.getElementById('personName').value = b.dataset.name;
+      document.getElementById('personPhone').value = b.dataset.phone;
+      document.getElementById('personRole').value = b.dataset.role;
+      document.getElementById('personStatus').value = b.dataset.status;
+      document.getElementById('personFingerprint').value = b.dataset.fingerprint;
+      document.getElementById('emailField').hidden = true;
+      resetScannerUI();
+      if (b.dataset.fingerprint === 'enrolled') {
+        handleEnrollmentSuccess();
+      }
+      modal.showModal();
+    });
+
+    modal.addEventListener('close', () => {
+      if (sseEnrollSource) sseEnrollSource.close();
+      activeEnrollUserUUID = null;
+    });
+  </script>
+</body>
+</html>

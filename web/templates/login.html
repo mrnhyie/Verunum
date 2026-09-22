@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <title>Sign in · Verunum</title>
+</head>
+<body class="login mono-theme">
+  <main class="mono-card" style="border-radius: 20px; padding: 40px;">
+    <div class="auth-brand" style="justify-content: center; margin-bottom: 24px;">
+      <span class="brand-mark" style="background: #09090b; color: #ffffff;">V</span>
+      <strong style="color: #09090b; font-size: 20px;">verunum</strong>
+    </div>
+
+    <h1 style="font-size: 24px; font-weight: 800; color: #09090b; text-align: center; margin: 0 0 6px;">Sign in</h1>
+    <p style="color: #71717a; text-align: center; margin: 0 0 24px; font-size: 13px;">Enter your credentials to access your workspace.</p>
+
+    <form method="post" action="/auth/login">
+      <label style="color: #09090b; font-weight: 600; font-size: 13px;">
+        Email address
+        <input name="email" type="email" required autocomplete="email" placeholder="admin@demo.local" style="border-radius: 10px; border-color: #e4e4e7;">
+      </label>
+
+      <label style="color: #09090b; font-weight: 600; font-size: 13px; margin-top: 12px;">
+        Password
+        <input name="password" type="password" required autocomplete="current-password" placeholder="••••••••" style="border-radius: 10px; border-color: #e4e4e7;">
+      </label>
+
+      <button type="submit" class="btn-pill btn-pill-primary" style="width: 100%; margin-top: 20px; padding: 12px;">
+        Sign in to Verunum
+      </button>
+
+      {{if .Error}}
+      <div class="alert-banner error" style="margin-top: 16px; font-size: 12px;">
+        {{.Error}}
+      </div>
+      {{end}}
+    </form>
+
+    <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #e4e4e7; text-align: center; font-size: 12px; color: #71717a;">
+      <div>Demo Admin: <strong style="color: #09090b;">admin@demo.local</strong> / <strong style="color: #09090b;">admin123</strong></div>
+    </div>
+  </main>
+</body>
+</html>

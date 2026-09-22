@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/platform/organisations">
+      <span class="brand-mark">V</span>
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Platform / Customer Organisations / {{.Org.Name}}</span>
+    <div class="topbar-actions">
+      <span class="avatar">SA</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <p class="rail-label">Platform</p>
+    <a class="rail-link" href="/dashboard"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Dashboard</a>
+    <p class="rail-label">Customer Workspaces</p>
+    <a class="rail-link" href="/platform/organisations"><svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>Organisations</a>
+    <a class="rail-link" href="/platform/device-provisioning"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01M12 12h.01"/></svg>Device Provisioning</a>
+    <a class="rail-link" href="/admin/organizations/new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New Organisation</a>
+  </aside>
+
+  <main class="staff-main" style="max-width: 1200px;">
+    <a class="back-link" href="/platform/organisations" style="color: #71717a; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 24px;">
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to all organisations
+    </a>
+
+    <!-- Header Section -->
+    <div class="org-profile-header">
+      <div>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; color: #09090b;">{{.Org.Name}}</h1>
+          <span class="badge-pill {{if eq .Org.Status "active"}}active{{else}}offline{{end}}">
+            <span class="status-dot {{if eq .Org.Status "active"}}online{{else}}offline{{end}}"></span>
+            {{.Org.Status}}
+          </span>
+          <span class="badge-pill">{{.Org.Type}}</span>
+        </div>
+        <div class="org-meta-badges">
+          <span class="contact-chip" title="Primary Administrator">
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            {{if .Admin.Name}}{{.Admin.Name}}{{else}}No admin assigned{{end}}
+          </span>
+          {{if .Admin.Email}}
+          <span class="contact-chip" title="Email address">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            {{.Admin.Email}}
+          </span>
+          {{end}}
+          {{if .Admin.Phone}}
+          <span class="contact-chip" title="Phone number">
+            <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            {{.Admin.Phone}}
+          </span>
+          {{end}}
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <form method="post" action="/platform/organisations/{{.Org.ID}}/toggle-status" style="margin: 0;">
+          <button type="submit" class="btn-pill btn-pill-secondary">
+            {{if eq .Org.Status "active"}}Deactivate{{else}}Activate{{end}} Workspace
+          </button>
+        </form>
+        <a href="/platform/device-provisioning?org_id={{.Org.ID}}" class="btn-pill btn-pill-primary">
+          <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Provision Device
+        </a>
+      </div>
+    </div>
+
+    <!-- Organisation identity / profile -->
+    <section class="org-identity-grid">
+      <div class="mono-card org-identity-card">
+        <div class="org-logo-frame">
+          {{if .OrgLogo}}
+          <img src="{{.OrgLogo}}" alt="{{.Org.Name}} logo">
+          {{else}}
+          <span>{{printf "%.1s" .Org.Name}}</span>
+          {{end}}
+        </div>
+        <div class="org-identity-copy">
+          <p class="eyebrow">Organisation profile</p>
+          <h2>{{.Org.Name}}</h2>
+          <p>{{.Org.Type}} · {{if .OrgLocation}}{{.OrgLocation}}{{else}}Location not set{{end}}</p>
+        </div>
+        <form class="org-logo-form" action="/platform/organisations/{{.Org.ID}}/logo" method="post" enctype="multipart/form-data">
+          <label class="logo-upload">
+            <input id="orgLogoInput" type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" required>
+            <span class="btn-pill btn-pill-secondary">Choose logo</span>
+          </label>
+          <button class="btn-pill btn-pill-primary" type="submit">Upload logo</button>
+          <small>PNG, JPG, WEBP or SVG · up to 2 MB</small>
+        </form>
+      </div>
+      <div class="mono-card org-contact-card">
+        <div class="profile-card-heading">
+          <div>
+            <p class="eyebrow">Primary administrator</p>
+            <h3>{{if .Admin.Name}}{{.Admin.Name}}{{else}}No administrator assigned{{end}}</h3>
+          </div>
+          <span class="profile-avatar">{{if .Admin.Name}}{{printf "%.1s" .Admin.Name}}{{else}}—{{end}}</span>
+        </div>
+        <div class="profile-details">
+          <div><span>Email</span><strong>{{if .Admin.Email}}{{.Admin.Email}}{{else}}Not provided{{end}}</strong></div>
+          <div><span>Phone</span><strong>{{if .Admin.Phone}}{{.Admin.Phone}}{{else}}Not provided{{end}}</strong></div>
+          <div><span>Member since</span><strong>{{.Org.CreatedAt}}</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Metrics & Analytics Widgets -->
+    <div class="org-stats-grid">
+      <!-- Widget 1: Provisioned Devices -->
+      <div class="mono-card stat-card">
+        <div>
+          <div class="stat-card-label">
+            <span>Provisioned Devices</span>
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:#71717a;"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+          </div>
+          <div class="stat-card-value">{{.TotalDevices}}</div>
+        </div>
+        <div class="stat-card-sub" style="display: flex; gap: 12px;">
+          <span style="display: inline-flex; align-items: center; gap: 5px;">
+            <span class="status-dot online"></span>
+            <strong>{{.ActiveDevices}}</strong> active online
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 5px;">
+            <span class="status-dot offline"></span>
+            <strong>{{.OfflineDevices}}</strong> offline
+          </span>
+        </div>
+      </div>
+
+      <!-- Widget 2: Enrolled Users -->
+      <div class="mono-card stat-card">
+        <div>
+          <div class="stat-card-label">
+            <span>Enrolled Members</span>
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:#71717a;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="stat-card-value">{{.TotalUsers}}</div>
+        </div>
+        <div class="stat-card-sub">
+          Active registered staff and users in workspace
+        </div>
+      </div>
+
+      <!-- Widget 3: 30-Day Activity Chart -->
+      <div class="mono-card activity-chart-container">
+        <div class="stat-card-label">
+          <span>30-Day Activity Volume</span>
+          <span style="font-weight: 700; color: #09090b; font-size: 13px;">{{.TotalScans30Days}} scans</span>
+        </div>
+        <div class="chart-bars-wrap">
+          {{range .Activity}}
+          <div class="chart-bar-col">
+            <div class="tooltip">{{.Label}}: {{.Count}} scans</div>
+            <div class="chart-bar-fill" style="height: {{.Pct}}%;"></div>
+          </div>
+          {{end}}
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #a1a1aa; margin-top: 8px;">
+          <span>30 days ago</span>
+          <span>Today</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hardware Inventory Section -->
+    <div class="mono-card" style="margin-top: 28px;">
+      <div style="padding: 20px 24px; border-bottom: 1px solid #e4e4e7; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: #09090b;">Hardware Inventory</h2>
+          <p class="subtle" style="margin: 2px 0 0; font-size: 12px; color: #71717a;">Registered terminals and live WebSocket connection statuses.</p>
+        </div>
+        <span class="badge-pill">{{len .Devices}} Units</span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="hardware-table">
+          <thead>
+            <tr>
+              <th>Device Name</th>
+              <th>MAC Address</th>
+              <th>Status</th>
+              <th>Last Seen</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Devices}}
+            <tr>
+              <td>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 32px; height: 32px; border-radius: 8px; background: #f4f4f5; display: grid; place-items: center; color: #09090b;">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+                  </div>
+                  <div>
+                    <strong style="color: #09090b; font-size: 14px;">{{.Name}}</strong>
+                    <div style="font-size: 11px; color: #71717a;">{{.DevID}}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="mono" style="font-size: 12px; font-weight: 600; color: #3f3f46; background: #f4f4f5; padding: 3px 8px; border-radius: 6px;">
+                  {{if .MAC}}{{.MAC}}{{else}}—{{end}}
+                </span>
+              </td>
+              <td>
+                <span class="badge-pill {{if .IsOnline}}online{{else}}offline{{end}}">
+                  <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}"></span>
+                  {{if .IsOnline}}Online{{else}}Offline{{end}}
+                </span>
+              </td>
+              <td style="color: #71717a; font-size: 12px;">
+                {{if .LastSeen}}{{.LastSeen}}{{else}}Never connected{{end}}
+              </td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; gap: 8px; align-items: center;">
+                  <form method="post" action="/platform/organisations/{{$.Org.ID}}/devices/{{.ID}}/reprovision" style="margin: 0;">
+                    <button type="submit" class="btn-pill btn-pill-secondary" style="padding: 6px 14px; font-size: 12px;" onclick="return confirm('Re-provision device {{.Name}}?')">
+                      Re-provision
+                    </button>
+                  </form>
+                  <form method="post" action="/platform/organisations/{{$.Org.ID}}/devices/{{.ID}}/revoke" style="margin: 0;">
+                    <button type="submit" class="btn-pill btn-pill-danger" style="padding: 6px 14px; font-size: 12px;" onclick="return confirm('Revoke credentials for device {{.Name}}?')">
+                      Revoke
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {{else}}
+            <tr>
+              <td colspan="5" style="text-align: center; padding: 48px 20px; color: #71717a;">
+                No physical devices provisioned for this organisation yet.
+                <div style="margin-top: 12px;">
+                  <a href="/platform/device-provisioning?org_id={{.Org.ID}}" class="btn-pill btn-pill-primary" style="font-size: 12px; padding: 6px 16px;">
+                    ＋ Provision First Device
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+<script>
+  const logoInput = document.getElementById('orgLogoInput');
+  if (logoInput) {
+    logoInput.addEventListener('change', () => {
+      const label = logoInput.closest('.logo-upload');
+      const button = label?.querySelector('.btn-pill');
+      if (button && logoInput.files[0]) button.textContent = logoInput.files[0].name;
+    });
+  }
+</script>
+</body>
+</html>

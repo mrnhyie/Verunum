@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Device Provisioning · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/platform/organisations">
+      <span class="brand-mark">V</span>
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Platform / Device Provisioning</span>
+    <div class="topbar-actions">
+      <span class="avatar">SA</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <p class="rail-label">Platform</p>
+    <a class="rail-link" href="/dashboard"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Dashboard</a>
+    <p class="rail-label">Customer Workspaces</p>
+    <a class="rail-link" href="/platform/organisations"><svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>Organisations</a>
+    <a class="rail-link" href="/platform/device-provisioning"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01M12 12h.01"/></svg>Device Provisioning</a>
+    <a class="rail-link" href="/admin/organizations/new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New Organisation</a>
+  </aside>
+
+  <main class="form-main">
+    <a class="back-link" href="/platform/organisations" style="color: #71717a; display: inline-flex; align-items: center; gap: 6px;">
+      <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to customer organisations
+    </a>
+
+    <div id="provisionFormContainer">
+      <div class="form-heading">
+        <p class="eyebrow" style="color: #71717a;">Platform Provisioning</p>
+        <h1 style="color: #09090b; font-weight: 800;">Request device provisioning</h1>
+        <p class="subtle" style="color: #71717a;">Pre-register hardware MAC addresses for zero-touch physical bootup.</p>
+      </div>
+
+      <div class="mono-card" style="padding: 28px;">
+        <form id="provisionForm" onsubmit="handleProvisionSubmit(event)">
+          <div class="form-grid" style="gap: 20px;">
+            <label class="full" style="color:#09090b; font-weight:600;">
+              Target Organisation
+              {{if .Organizations}}
+              <select name="org_id" id="orgIdSelect" required style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+                {{range .Organizations}}
+                <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+                {{end}}
+              </select>
+              {{else}}
+              <input type="hidden" name="org_id" id="orgIdInput" value="{{.OrganizationID}}">
+              <input type="text" value="{{.OrganizationName}}" readonly style="background:#f4f4f5; color:#71717a; border-radius:10px;">
+              {{end}}
+            </label>
+
+            <label style="color:#09090b; font-weight:600;">
+              Device name
+              <input name="device_name" id="deviceNameInput" required placeholder="e.g. Main Entrance Gate" style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            </label>
+
+            <label class="mac-field" style="color:#09090b; font-weight:600;">
+              Device MAC address
+              <div class="mac-otp" role="group" aria-label="MAC address">
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 1">
+                <span>:</span>
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 2">
+                <span>:</span>
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 3">
+                <span>:</span>
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 4">
+                <span>:</span>
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 5">
+                <span>:</span>
+                <input class="mac-box" maxlength="2" inputmode="text" autocomplete="off" aria-label="MAC pair 6">
+              </div>
+              <input type="hidden" name="mac_address" id="macAddressInput" required>
+              <small class="field-help">Enter the 12 hexadecimal characters in six pairs.</small>
+            </label>
+
+            <label class="full" style="color:#09090b; font-weight:600;">
+              Installation location
+              <input name="location" id="locationInput" placeholder="e.g. Lobby / Reception" style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            </label>
+          </div>
+
+          <div id="formError" class="alert-banner error" style="display:none; margin-top: 20px;"></div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 14px; margin-top: 28px; padding-top: 20px; border-top: 1px solid #e4e4e7;">
+            <a href="/platform/organisations" class="btn-pill btn-pill-secondary">Cancel</a>
+            <button type="submit" id="submitBtn" class="btn-pill btn-pill-primary">
+              <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              Request device provisioning
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Provisioning Waiting State -->
+    <div id="waitingStateContainer" class="mono-card provision-flow-card" style="display: none;">
+      <div class="provision-waiting-screen">
+        <div class="radar-spinner">
+          <div class="radar-ring"></div>
+          <div class="radar-ring"></div>
+          <div class="radar-ring"></div>
+          <div class="radar-core">
+            <svg viewBox="0 0 24 24" style="width:20px;height:20px;"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+          </div>
+        </div>
+
+        <div>
+          <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 700;">Waiting for physical device</h2>
+          <p id="waitingMacMsg" class="subtle" style="margin: 0; color: #71717a; font-size: 14px;">
+            Waiting for physical device (<span class="mono" style="font-weight: 700; color: #09090b;"></span>) to connect...
+          </p>
+        </div>
+
+        <div class="countdown-box">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          <span id="countdownDisplay">03:00</span>
+        </div>
+
+        <div id="statusBanner" style="width: 100%; display: none;"></div>
+
+        <div id="waitingActions" style="display: flex; gap: 12px; margin-top: 10px;">
+          <button type="button" class="btn-pill btn-pill-secondary" onclick="cancelProvisioning()">Cancel</button>
+        </div>
+
+        <div id="timeoutActions" style="display: none; gap: 12px; margin-top: 10px;">
+          <button type="button" class="btn-pill btn-pill-primary" onclick="retryProvisioning()">Retry</button>
+          <a href="/platform/organisations" class="btn-pill btn-pill-secondary">Return to Organisations</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let timerInterval = null;
+    let secondsLeft = 180;
+    let sseSource = null;
+    let currentTargetOrgId = '{{.OrganizationID}}';
+    let currentTargetMAC = '';
+
+    const macBoxes = Array.from(document.querySelectorAll('.mac-box'));
+    function syncMacAddress() {
+      const value = macBoxes.map(input => input.value.replace(/[^0-9a-f]/gi, '').toUpperCase().slice(0, 2)).join(':');
+      document.getElementById('macAddressInput').value = macBoxes.every(input => input.value.length === 2) ? value : '';
+      macBoxes.forEach(input => {
+        input.value = input.value.replace(/[^0-9a-f]/gi, '').toUpperCase().slice(0, 2);
+      });
+    }
+    macBoxes.forEach((input, index) => {
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/[^0-9a-f]/gi, '').toUpperCase().slice(0, 2);
+        if (input.value.length === 2 && index < macBoxes.length - 1) macBoxes[index + 1].focus();
+        syncMacAddress();
+      });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Backspace' && input.value === '' && index > 0) macBoxes[index - 1].focus();
+      });
+      input.addEventListener('paste', e => {
+        e.preventDefault();
+        const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9a-f]/gi, '').toUpperCase().slice(0, 12);
+        pasted.match(/.{1,2}/g)?.forEach((pair, i) => { if (macBoxes[i]) macBoxes[i].value = pair; });
+        syncMacAddress();
+        const next = macBoxes.find(input => input.value.length < 2);
+        (next || macBoxes[macBoxes.length - 1]).focus();
+      });
+    });
+
+    async function handleProvisionSubmit(e) {
+      e.preventDefault();
+      const form = document.getElementById('provisionForm');
+      const errEl = document.getElementById('formError');
+      errEl.style.display = 'none';
+
+      const orgSelect = document.getElementById('orgIdSelect');
+      const orgInput = document.getElementById('orgIdInput');
+      const orgId = orgSelect ? orgSelect.value : (orgInput ? orgInput.value : currentTargetOrgId);
+      currentTargetOrgId = orgId;
+
+      const deviceName = document.getElementById('deviceNameInput').value.trim();
+      const macAddress = document.getElementById('macAddressInput').value.trim().toUpperCase();
+      const location = document.getElementById('locationInput').value.trim();
+      currentTargetMAC = macAddress;
+
+      const payload = {
+        org_id: orgId,
+        device_name: deviceName,
+        mac_address: macAddress,
+        location: location
+      };
+
+      try {
+        const res = await fetch('/api/v1/platform/devices/pending', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errEl.textContent = data.error || 'Failed to request device provisioning.';
+          errEl.style.display = 'flex';
+          return;
+        }
+
+        // Switch to waiting state
+        startWaitingState(macAddress);
+      } catch (err) {
+        errEl.textContent = 'Network error: ' + err.message;
+        errEl.style.display = 'flex';
+      }
+    }
+
+    function startWaitingState(macAddress) {
+      document.getElementById('provisionFormContainer').style.display = 'none';
+      const waitContainer = document.getElementById('waitingStateContainer');
+      waitContainer.style.display = 'block';
+
+      document.querySelector('#waitingMacMsg .mono').textContent = macAddress;
+      secondsLeft = 180;
+      updateCountdown();
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        secondsLeft--;
+        updateCountdown();
+        if (secondsLeft <= 0) {
+          handleTimeout();
+        }
+      }, 1000);
+
+      initSSEListener(macAddress);
+    }
+
+    function updateCountdown() {
+      const mins = Math.floor(secondsLeft / 60);
+      const secs = secondsLeft % 60;
+      document.getElementById('countdownDisplay').textContent = 
+        String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+    }
+
+    function initSSEListener(macAddress) {
+      if (sseSource) sseSource.close();
+      sseSource = new EventSource('/api/v1/platform/events');
+
+      sseSource.addEventListener('device.provisioned', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.mac_address && data.mac_address.toUpperCase() === macAddress.toUpperCase()) {
+            handleSuccessProvisioning(data);
+          }
+        } catch (err) {
+          console.error('SSE parse error:', err);
+        }
+      });
+
+      sseSource.onerror = () => {
+        // SSE auto reconnects
+      };
+    }
+
+    function handleSuccessProvisioning(data) {
+      clearInterval(timerInterval);
+      if (sseSource) sseSource.close();
+
+      const banner = document.getElementById('statusBanner');
+      banner.className = 'alert-banner success';
+      banner.innerHTML = `
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#047857;"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>Device successfully bound and provisioned! Redirecting...</span>
+      `;
+      banner.style.display = 'flex';
+      document.getElementById('waitingActions').style.display = 'none';
+
+      const targetOrg = data.org_id || currentTargetOrgId;
+      setTimeout(() => {
+        window.location.href = '/platform/organisations/' + targetOrg;
+      }, 1500);
+    }
+
+    function cancelProvisioning() {
+      clearInterval(timerInterval);
+      if (sseSource) sseSource.close();
+      showTimeoutAlert("Provisioning cancelled.");
+    }
+
+    function handleTimeout() {
+      clearInterval(timerInterval);
+      if (sseSource) sseSource.close();
+      showTimeoutAlert("Provisioning timed out. Verify device is powered on and configured.");
+    }
+
+    function showTimeoutAlert(msg) {
+      const banner = document.getElementById('statusBanner');
+      banner.className = 'alert-banner warning';
+      banner.innerHTML = `
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#b45309;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>${msg}</span>
+      `;
+      banner.style.display = 'flex';
+      document.getElementById('waitingActions').style.display = 'none';
+      document.getElementById('timeoutActions').style.display = 'flex';
+    }
+
+    function retryProvisioning() {
+      document.getElementById('statusBanner').style.display = 'none';
+      document.getElementById('timeoutActions').style.display = 'none';
+      document.getElementById('waitingActions').style.display = 'flex';
+      document.getElementById('waitingStateContainer').style.display = 'none';
+      document.getElementById('provisionFormContainer').style.display = 'block';
+    }
+  </script>
+</body>
+</html>

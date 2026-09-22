@@ -1,0 +1,26 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{.Title}} · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/dashboard"><span class="brand-mark">V</span><span>verunum</span></a>
+    <span class="breadcrumb">/ {{.Title}}</span>
+    <div class="topbar-actions">
+      <span class="avatar">{{if .IsStaff}}SA{{else}}DA{{end}}</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out" aria-label="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+  <main class="dashboard-main">{{template "content" .}}</main>
+</body>
+</html>
+{{end}}

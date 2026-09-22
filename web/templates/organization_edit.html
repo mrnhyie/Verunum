@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Edit organisation · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <script>function syncType(){}</script>
+</head>
+<body class="app-shell">
+  <header class="topbar">
+    <a class="brand" href="/dashboard">
+      <span class="brand-mark">V</span>
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Platform / Edit organisation</span>
+    <div class="topbar-actions">
+      <span class="avatar">SA</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <p class="rail-label">Platform</p>
+    <a class="rail-link" href="/dashboard"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Dashboard</a>
+    <p class="rail-label">Customer Workspaces</p>
+    <a class="rail-link" href="/platform/organisations"><svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>Organisations</a>
+    <a class="rail-link" href="/platform/device-provisioning"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8h.01M16 8h.01M8 16h.01M16 16h.01M12 12h.01"/></svg>Device Provisioning</a>
+    <a class="rail-link" href="/admin/organizations/new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New Organisation</a>
+  </aside>
+
+  <main class="form-main" style="padding-top: 40px;">
+    <a class="back-link" href="/admin/organizations">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back to organisations
+    </a>
+
+    <div class="form-heading">
+      <p class="eyebrow">Platform staff</p>
+      <h1>Edit organisation</h1>
+      <p class="subtle">Update the customer organisation profile or deactivate access.</p>
+    </div>
+
+    <form class="mono-card" method="post" action="/admin/organizations/{{.ID}}">
+      <div class="form-section">
+        <h2>Organisation details</h2>
+        <div class="form-grid" style="gap: 18px;">
+          <label class="full">Organisation name
+            <input name="name" required value="{{.Name}}">
+          </label>
+          <label>Organisation type
+            <select name="type">
+              <option value="school" {{if eq .Type "school"}}selected{{end}}>School</option>
+              <option value="church" {{if eq .Type "church"}}selected{{end}}>Church</option>
+              <option value="company" {{if eq .Type "company"}}selected{{end}}>Company</option>
+              <option value="home" {{if eq .Type "home"}}selected{{end}}>Home</option>
+              <option value="other" {{if eq .Type "other"}}selected{{end}}>Other</option>
+            </select>
+          </label>
+          <label>Status
+            <select name="status">
+              <option value="active" {{if eq .Status "active"}}selected{{end}}>Active</option>
+              <option value="inactive" {{if eq .Status "inactive"}}selected{{end}}>Inactive</option>
+            </select>
+          </label>
+          <label>Phone
+            <input name="phone" value="{{.Phone}}">
+          </label>
+          <label>Location
+            <input name="location" value="{{.Location}}">
+          </label>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <a href="/admin/organizations">Cancel</a>
+        <button type="submit" class="btn-pill btn-pill-primary">Save changes</button>
+      </div>
+
+      {{if .Error}}<div class="alert-banner error form-error" style="margin: 0 24px 18px;">{{.Error}}</div>{{end}}
+    </form>
+  </main>
+</body>
+</html>
