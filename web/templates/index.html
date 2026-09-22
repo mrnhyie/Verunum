@@ -1,250 +1,1677 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Verunum - Modern Biometric Access Control</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
-  <style>
-    /* Landing Page Specific Styles */
-    body {
-      background: var(--canvas);
-    }
-    .landing-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 24px 48px;
-      max-width: 1420px;
-      margin: 0 auto;
-    }
-    .hero {
-      text-align: center;
-      padding: 100px 24px;
-      max-width: 900px;
-      margin: 0 auto;
-    }
-    .hero h1 {
-      font-size: 56px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      color: var(--ink);
-      line-height: 1.1;
-      margin-bottom: 24px;
-    }
-    .hero p {
-      font-size: 20px;
-      color: var(--ink-secondary);
-      margin-bottom: 40px;
-      font-weight: 500;
-      line-height: 1.6;
-    }
-    .device-preview {
-      margin: 60px auto;
-      max-width: 800px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      box-shadow: 8px 8px 0px rgba(9, 9, 11, 1);
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 400px;
-      position: relative;
-    }
-    .device-mockup {
-      width: 200px;
-      height: 320px;
-      background: #09090b;
-      border-radius: 20px;
-      border: 4px solid #3f3f46;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-    }
-    .device-mockup svg { width: 64px; height: 64px; margin-bottom: 16px; color: var(--emerald); }
-    
-    .features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 40px;
-      max-width: 1200px;
-      margin: 80px auto;
-      padding: 0 48px;
-    }
-    .feature-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 40px 32px;
-      text-align: left;
-      box-shadow: var(--shadow-md);
-      transition: transform 0.2s;
-    }
-    .feature-card:hover {
-      transform: translateY(-4px);
-    }
-    .feature-icon {
-      width: 48px;
-      height: 48px;
-      background: var(--emerald-bg);
-      color: var(--emerald-ink);
-      border: 1px solid var(--emerald-border);
-      border-radius: var(--radius-md);
-      display: grid;
-      place-items: center;
-      margin-bottom: 24px;
-    }
-    .feature-icon svg { width: 24px; height: 24px; }
-    .feature-card h3 {
-      font-size: 20px;
-      font-weight: 800;
-      color: var(--ink);
-      margin-bottom: 12px;
-    }
-    .feature-card p {
-      font-size: 15px;
-      color: var(--ink-secondary);
-      line-height: 1.5;
-    }
-    
-    .flow-section {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      padding: 100px 48px;
-      text-align: center;
-    }
-    .flow-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 24px;
-      max-width: 1200px;
-      margin: 60px auto 0;
-    }
-    .flow-step {
-      text-align: center;
-    }
-    .flow-num {
-      width: 40px;
-      height: 40px;
-      background: var(--ink);
-      color: #fff;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 18px;
-      margin: 0 auto 20px;
-    }
-    .flow-step h4 { font-size: 16px; font-weight: 800; margin-bottom: 8px; }
-    .flow-step p { font-size: 14px; color: var(--ink-secondary); }
-    
-    .footer {
-      text-align: center;
-      padding: 60px;
-      color: var(--ink-secondary);
-      font-size: 14px;
-      font-weight: 500;
-    }
-  </style>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <header class="landing-header">
-    <a class="brand" href="/" style="font-size: 20px;">
-      <span class="brand-mark" style="width: 32px; height: 32px; font-size: 16px;">V</span>
-      <span>verunum</span>
-    </a>
-    <div style="display: flex; gap: 16px;">
-      <a href="/login" class="btn-pill btn-pill-secondary">Sign In</a>
-    </div>
-  </header>
+    <title>Verunum — Attendance Management</title>
 
-  <main>
-    <section class="hero">
-      <h1>Biometric access control, modernized.</h1>
-      <p>Secure your workspaces with zero-touch provisioning, real-time telemetry, and resilient offline capabilities. The Verunum platform pairs flawlessly with the TAB5 hardware for an unparalleled attendance experience.</p>
-      <a href="/login" class="primary-action" style="font-size: 16px; padding: 16px 32px;">
-        Access Dashboard
-        <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </a>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-      <!-- Device Advert / Preview -->
-      <div class="device-preview">
-        <div style="position:absolute; top:40px; left:60px; text-align:left;">
-          <h2 style="font-size:28px; font-weight:900; margin-bottom:12px;">Meet the TAB5</h2>
-          <p style="color:var(--ink-secondary); max-width:280px; font-size:15px; font-weight:500;">
-            Equipped with the R503 fingerprint sensor, the TAB5 maintains high-speed local matching and synchronizes seamlessly via secure WebSockets.
-          </p>
+      :root {
+        --background: #ffffff;
+        --foreground: #111111;
+        --muted: #737373;
+        --subtle: #a3a3a3;
+        --border: #e5e5e5;
+        --surface: #fafafa;
+        --dark: #111111;
+        --green: #16a34a;
+        --blue: #2563eb;
+        --orange: #ea580c;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+
+        background: var(--background);
+        color: var(--foreground);
+
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      /* --------------------------------
+           NAVBAR
+        -------------------------------- */
+
+      .navbar {
+        height: 72px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.94);
+
+        position: sticky;
+        top: 0;
+        z-index: 100;
+
+        backdrop-filter: blur(10px);
+      }
+
+      .nav-container {
+        max-width: 1200px;
+        height: 100%;
+        margin: auto;
+        padding: 0 24px;
+
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+
+      .brand-mark {
+        width: 28px;
+        height: 28px;
+
+        background: #111;
+        color: #fff;
+
+        display: grid;
+        place-items: center;
+
+        border-radius: 7px;
+
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+
+        color: #666;
+        font-size: 13px;
+      }
+
+      .nav-links a {
+        transition: color 0.2s;
+      }
+
+      .nav-links a:hover {
+        color: #111;
+      }
+
+      .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+
+      .login-btn {
+        padding: 9px 14px;
+
+        border: 1px solid var(--border);
+        border-radius: 7px;
+
+        background: #fff;
+
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .primary-btn {
+        padding: 10px 15px;
+
+        border: 1px solid #111;
+        border-radius: 7px;
+
+        background: #111;
+        color: #fff;
+
+        font-size: 13px;
+        font-weight: 600;
+
+        cursor: pointer;
+
+        transition:
+          background 0.2s,
+          transform 0.2s;
+      }
+
+      .primary-btn:hover {
+        background: #292929;
+        transform: translateY(-1px);
+      }
+
+      .mobile-menu {
+        display: none;
+
+        border: 0;
+        background: transparent;
+
+        font-size: 22px;
+        cursor: pointer;
+      }
+
+      /* --------------------------------
+           HERO
+        -------------------------------- */
+
+      .hero {
+        padding: 105px 24px 100px;
+      }
+
+      .hero-container {
+        max-width: 1200px;
+        margin: auto;
+      }
+
+      .hero-content {
+        max-width: 760px;
+      }
+
+      .hero-kicker {
+        margin-bottom: 20px;
+
+        font-size: 13px;
+        font-weight: 600;
+        color: #525252;
+      }
+
+      .hero-kicker span {
+        color: var(--green);
+      }
+
+      .hero h1 {
+        font-size: clamp(48px, 6vw, 76px);
+        line-height: 1.02;
+
+        letter-spacing: -4px;
+        font-weight: 750;
+
+        max-width: 820px;
+      }
+
+      .hero h1 span {
+        color: #737373;
+      }
+
+      .hero-text {
+        max-width: 570px;
+
+        margin-top: 25px;
+
+        color: #666;
+        font-size: 17px;
+        line-height: 1.7;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 9px;
+
+        margin-top: 30px;
+      }
+
+      .hero-actions a {
+        padding: 12px 17px;
+
+        border-radius: 7px;
+
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .hero-primary {
+        background: #111;
+        color: #fff;
+      }
+
+      .hero-secondary {
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+
+      /* --------------------------------
+           DASHBOARD
+        -------------------------------- */
+
+      .dashboard-wrap {
+        margin-top: 80px;
+
+        border: 1px solid var(--border);
+        border-radius: 12px;
+
+        overflow: hidden;
+
+        background: #fafafa;
+      }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: 210px 1fr;
+
+        min-height: 550px;
+      }
+
+      .dashboard-sidebar {
+        background: #111;
+        color: #fff;
+
+        padding: 24px 14px;
+      }
+
+      .sidebar-brand {
+        padding: 0 10px 28px;
+
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .sidebar-section {
+        margin-bottom: 25px;
+      }
+
+      .sidebar-label {
+        padding: 0 10px 8px;
+
+        color: #666;
+
+        font-size: 9px;
+        font-weight: 700;
+
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .sidebar-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        padding: 9px 10px;
+        margin-bottom: 2px;
+
+        border-radius: 6px;
+
+        color: #999;
+
+        font-size: 12px;
+      }
+
+      .sidebar-link.active {
+        background: #242424;
+        color: #fff;
+      }
+
+      .sidebar-icon {
+        width: 15px;
+        text-align: center;
+        color: inherit;
+      }
+
+      .dashboard-content {
+        padding: 30px;
+
+        background: #f7f7f5;
+      }
+
+      .dashboard-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        margin-bottom: 25px;
+      }
+
+      .dashboard-title h2 {
+        font-size: 20px;
+        letter-spacing: -0.6px;
+      }
+
+      .dashboard-title p {
+        margin-top: 4px;
+
+        color: #888;
+        font-size: 11px;
+      }
+
+      .admin {
+        width: 32px;
+        height: 32px;
+
+        border-radius: 50%;
+
+        background: #ddd;
+
+        display: grid;
+        place-items: center;
+
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+
+        gap: 10px;
+      }
+
+      .metric {
+        background: #fff;
+
+        border: 1px solid var(--border);
+        border-radius: 8px;
+
+        padding: 17px;
+      }
+
+      .metric-label {
+        color: #8a8a8a;
+
+        font-size: 10px;
+        font-weight: 500;
+
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .metric-value {
+        margin-top: 9px;
+
+        font-size: 25px;
+        font-weight: 700;
+
+        letter-spacing: -1px;
+      }
+
+      .metric-note {
+        margin-top: 5px;
+
+        color: var(--green);
+
+        font-size: 10px;
+      }
+
+      .dashboard-lower {
+        display: grid;
+        grid-template-columns: 1.4fr 0.8fr;
+
+        gap: 10px;
+
+        margin-top: 10px;
+      }
+
+      .dash-card {
+        background: #fff;
+
+        border: 1px solid var(--border);
+        border-radius: 8px;
+
+        padding: 20px;
+      }
+
+      .card-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        margin-bottom: 22px;
+
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .card-heading span {
+        color: #999;
+        font-weight: 400;
+      }
+
+      /* CHART */
+
+      .chart {
+        height: 210px;
+
+        display: flex;
+        align-items: flex-end;
+
+        gap: 14px;
+
+        border-bottom: 1px solid #eee;
+      }
+
+      .chart-column {
+        flex: 1;
+
+        height: 100%;
+
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+      }
+
+      .chart-bar {
+        flex: 1;
+
+        min-width: 5px;
+
+        border-radius: 3px 3px 0 0;
+      }
+
+      .present {
+        background: #111;
+      }
+
+      .absent {
+        background: #d4d4d4;
+      }
+
+      .chart-labels {
+        display: flex;
+        justify-content: space-between;
+
+        margin-top: 8px;
+
+        color: #999;
+        font-size: 9px;
+      }
+
+      /* ACTIVITY */
+
+      .activity-row {
+        display: flex;
+        align-items: center;
+
+        padding: 11px 0;
+
+        border-bottom: 1px solid #f0f0f0;
+      }
+
+      .activity-avatar {
+        width: 28px;
+        height: 28px;
+
+        border-radius: 50%;
+
+        background: #e5e5e5;
+
+        margin-right: 10px;
+      }
+
+      .activity-info {
+        flex: 1;
+      }
+
+      .activity-name {
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .activity-method {
+        margin-top: 2px;
+
+        color: #999;
+        font-size: 9px;
+      }
+
+      .activity-status {
+        color: var(--green);
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      /* --------------------------------
+           SECTION
+        -------------------------------- */
+
+      .section {
+        padding: 115px 24px;
+      }
+
+      .section-container {
+        max-width: 1200px;
+        margin: auto;
+      }
+
+      .section-header {
+        max-width: 650px;
+      }
+
+      .section-eyebrow {
+        margin-bottom: 14px;
+
+        color: #888;
+
+        font-size: 11px;
+        font-weight: 700;
+
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+      }
+
+      .section-title {
+        font-size: clamp(34px, 4vw, 50px);
+
+        line-height: 1.08;
+        letter-spacing: -2.5px;
+        font-weight: 750;
+      }
+
+      .section-description {
+        margin-top: 17px;
+
+        color: #737373;
+
+        font-size: 15px;
+        line-height: 1.7;
+
+        max-width: 570px;
+      }
+
+      /* --------------------------------
+           FEATURES
+        -------------------------------- */
+
+      .features {
+        margin-top: 60px;
+
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+
+        border-top: 1px solid var(--border);
+        border-left: 1px solid var(--border);
+      }
+
+      .feature {
+        min-height: 230px;
+
+        padding: 28px;
+
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+
+        transition: background 0.2s;
+      }
+
+      .feature:hover {
+        background: #fafafa;
+      }
+
+      .feature-number {
+        color: #aaa;
+
+        font-size: 11px;
+        font-weight: 600;
+
+        margin-bottom: 45px;
+      }
+
+      .feature h3 {
+        font-size: 17px;
+        letter-spacing: -0.3px;
+      }
+
+      .feature p {
+        margin-top: 9px;
+
+        color: #777;
+
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      /* --------------------------------
+           SPLIT SECTION
+        -------------------------------- */
+
+      .split {
+        background: #fafafa;
+      }
+
+      .split-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+
+        gap: 100px;
+
+        align-items: center;
+      }
+
+      .split-list {
+        margin-top: 35px;
+      }
+
+      .split-item {
+        display: flex;
+        gap: 18px;
+
+        padding: 18px 0;
+
+        border-top: 1px solid var(--border);
+      }
+
+      .split-item:last-child {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .split-number {
+        color: #999;
+        font-size: 11px;
+      }
+
+      .split-item h4 {
+        font-size: 14px;
+      }
+
+      .split-item p {
+        margin-top: 4px;
+
+        color: #777;
+
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      /* DEVICE */
+
+      .device {
+        min-height: 470px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        background: #111;
+
+        border-radius: 10px;
+
+        position: relative;
+        overflow: hidden;
+      }
+
+      .device::after {
+        content: "";
+
+        position: absolute;
+
+        width: 350px;
+        height: 350px;
+
+        border: 1px solid #292929;
+        border-radius: 50%;
+      }
+
+      .device-box {
+        width: 190px;
+        height: 280px;
+
+        background: #191919;
+
+        border: 1px solid #333;
+
+        border-radius: 18px;
+
+        position: relative;
+        z-index: 2;
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+      }
+
+      .device-screen {
+        width: 100px;
+        height: 120px;
+
+        border: 1px solid #333;
+
+        border-radius: 9px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        color: #fff;
+      }
+
+      .fingerprint {
+        font-size: 55px;
+        line-height: 1;
+        color: #ddd;
+      }
+
+      .device-status {
+        margin-top: 18px;
+
+        color: #777;
+
+        font-size: 9px;
+
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      /* --------------------------------
+           NUMBERS
+        -------------------------------- */
+
+      .numbers {
+        margin-top: 65px;
+
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .number {
+        padding: 35px 25px;
+
+        border-right: 1px solid var(--border);
+      }
+
+      .number:last-child {
+        border-right: 0;
+      }
+
+      .number strong {
+        display: block;
+
+        font-size: 40px;
+        letter-spacing: -2px;
+      }
+
+      .number span {
+        display: block;
+
+        margin-top: 5px;
+
+        color: #888;
+        font-size: 12px;
+      }
+
+      /* --------------------------------
+           CTA
+        -------------------------------- */
+
+      .cta {
+        padding: 120px 24px;
+
+        background: #111;
+        color: #fff;
+
+        text-align: center;
+      }
+
+      .cta-inner {
+        max-width: 700px;
+        margin: auto;
+      }
+
+      .cta .section-eyebrow {
+        color: #777;
+      }
+
+      .cta h2 {
+        font-size: clamp(38px, 5vw, 60px);
+
+        line-height: 1.05;
+        letter-spacing: -3px;
+      }
+
+      .cta p {
+        max-width: 500px;
+
+        margin: 20px auto 30px;
+
+        color: #999;
+
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .cta-btn {
+        padding: 12px 18px;
+
+        background: #fff;
+        color: #111;
+
+        border: 0;
+        border-radius: 7px;
+
+        font-size: 13px;
+        font-weight: 650;
+
+        cursor: pointer;
+      }
+
+      /* --------------------------------
+           FOOTER
+        -------------------------------- */
+
+      footer {
+        padding: 60px 24px 25px;
+
+        background: #111;
+        color: #fff;
+
+        border-top: 1px solid #292929;
+      }
+
+      .footer-container {
+        max-width: 1200px;
+        margin: auto;
+      }
+
+      .footer-top {
+        display: flex;
+        justify-content: space-between;
+
+        padding-bottom: 50px;
+      }
+
+      .footer-description {
+        max-width: 280px;
+
+        margin-top: 12px;
+
+        color: #777;
+
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 75px;
+      }
+
+      .footer-column h4 {
+        margin-bottom: 15px;
+
+        color: #aaa;
+
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+      }
+
+      .footer-column a {
+        display: block;
+
+        margin-bottom: 9px;
+
+        color: #666;
+
+        font-size: 12px;
+      }
+
+      .footer-column a:hover {
+        color: #fff;
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+
+        padding-top: 20px;
+
+        border-top: 1px solid #292929;
+
+        color: #555;
+
+        font-size: 10px;
+      }
+
+      /* --------------------------------
+           RESPONSIVE
+        -------------------------------- */
+
+      @media (max-width: 900px) {
+        .nav-links {
+          display: none;
+        }
+
+        .mobile-menu {
+          display: block;
+        }
+
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
+
+        .dashboard-sidebar {
+          display: none;
+        }
+
+        .metric-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .dashboard-lower {
+          grid-template-columns: 1fr;
+        }
+
+        .features {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .split-layout {
+          grid-template-columns: 1fr;
+          gap: 50px;
+        }
+
+        .numbers {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .number:nth-child(2) {
+          border-right: 0;
+        }
+
+        .number:nth-child(-n + 2) {
+          border-bottom: 1px solid var(--border);
+        }
+
+        .footer-top {
+          flex-direction: column;
+          gap: 45px;
+        }
+      }
+
+      @media (max-width: 600px) {
+        .nav-right {
+          display: none;
+        }
+
+        .hero {
+          padding-top: 75px;
+        }
+
+        .hero h1 {
+          letter-spacing: -3px;
+        }
+
+        .hero-text {
+          font-size: 15px;
+        }
+
+        .hero-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .hero-actions a {
+          text-align: center;
+        }
+
+        .dashboard-wrap {
+          margin-top: 55px;
+        }
+
+        .dashboard-content {
+          padding: 15px;
+        }
+
+        .metric-grid {
+          gap: 7px;
+        }
+
+        .metric {
+          padding: 13px;
+        }
+
+        .metric-value {
+          font-size: 21px;
+        }
+
+        .chart {
+          gap: 5px;
+        }
+
+        .features {
+          grid-template-columns: 1fr;
+        }
+
+        .section {
+          padding: 80px 20px;
+        }
+
+        .numbers {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .number {
+          padding: 25px 15px;
+        }
+
+        .number strong {
+          font-size: 30px;
+        }
+
+        .footer-links {
+          gap: 30px;
+          flex-wrap: wrap;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- NAVIGATION -->
+
+    <header class="navbar">
+      <div class="nav-container">
+        <a href="#" class="brand">
+          <span class="brand-mark">V</span>
+          Verunum
+        </a>
+
+        <nav class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#technology">Technology</a>
+          <a href="#dashboard">Dashboard</a>
+          <a href="#contact">Contact</a>
+        </nav>
+
+        <div class="nav-right">
+          <a href="#" class="login-btn"> Client login </a>
+
+          <a href="#contact" class="primary-btn"> Get started </a>
         </div>
-        <div class="device-mockup" style="margin-left: 300px;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          <div style="font-size:12px; font-weight:700; letter-spacing:0.1em; color:#a1a1aa; margin-top:8px;">READY</div>
+
+        <button class="mobile-menu" onclick="toggleMenu()">☰</button>
+      </div>
+    </header>
+
+    <!-- HERO -->
+
+    <main>
+      <section class="hero">
+        <div class="hero-container">
+          <div class="hero-content">
+            <div class="hero-kicker">
+              <span>●</span>
+              Biometric + RFID attendance
+            </div>
+
+            <h1>
+              Attendance management,
+              <span>made simple.</span>
+            </h1>
+
+            <p class="hero-text">
+              Verunum gives schools, companies and institutions one place to
+              manage people, attendance, biometric devices and RFID
+              identification.
+            </p>
+
+            <div class="hero-actions">
+              <a href="#contact" class="hero-primary"> Request a demo </a>
+
+              <a href="#features" class="hero-secondary"> View features </a>
+            </div>
+          </div>
+
+          <!-- DASHBOARD -->
+
+          <div class="dashboard-wrap" id="dashboard">
+            <div class="dashboard">
+              <aside class="dashboard-sidebar">
+                <div class="sidebar-brand">Verunum</div>
+
+                <div class="sidebar-section">
+                  <div class="sidebar-label">Overview</div>
+
+                  <div class="sidebar-link active">
+                    <span class="sidebar-icon">◼</span>
+                    Dashboard
+                  </div>
+
+                  <div class="sidebar-link">
+                    <span class="sidebar-icon">◷</span>
+                    Attendance
+                  </div>
+                </div>
+
+                <div class="sidebar-section">
+                  <div class="sidebar-label">Management</div>
+
+                  <div class="sidebar-link">
+                    <span class="sidebar-icon">○</span>
+                    People
+                  </div>
+
+                  <div class="sidebar-link">
+                    <span class="sidebar-icon">□</span>
+                    Devices
+                  </div>
+
+                  <div class="sidebar-link">
+                    <span class="sidebar-icon">▤</span>
+                    Reports
+                  </div>
+                </div>
+
+                <div class="sidebar-section">
+                  <div class="sidebar-label">System</div>
+
+                  <div class="sidebar-link">
+                    <span class="sidebar-icon">⚙</span>
+                    Settings
+                  </div>
+                </div>
+              </aside>
+
+              <div class="dashboard-content">
+                <div class="dashboard-header">
+                  <div class="dashboard-title">
+                    <h2>Overview</h2>
+
+                    <p>Monday, September 22, 2026</p>
+                  </div>
+
+                  <div class="admin">A</div>
+                </div>
+
+                <div class="metric-grid">
+                  <div class="metric">
+                    <div class="metric-label">Total people</div>
+
+                    <div class="metric-value">1,284</div>
+
+                    <div class="metric-note">+42 this month</div>
+                  </div>
+
+                  <div class="metric">
+                    <div class="metric-label">Present today</div>
+
+                    <div class="metric-value">1,162</div>
+
+                    <div class="metric-note">90.5% attendance</div>
+                  </div>
+
+                  <div class="metric">
+                    <div class="metric-label">Late</div>
+
+                    <div class="metric-value">67</div>
+
+                    <div class="metric-note">5.2% of total</div>
+                  </div>
+
+                  <div class="metric">
+                    <div class="metric-label">Absent</div>
+
+                    <div class="metric-value">55</div>
+
+                    <div class="metric-note">4.3% of total</div>
+                  </div>
+                </div>
+
+                <div class="dashboard-lower">
+                  <div class="dash-card">
+                    <div class="card-heading">
+                      Attendance
+                      <span>Last 7 days</span>
+                    </div>
+
+                    <div class="chart">
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 75%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 12%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 86%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 8%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 68%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 17%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 92%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 5%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 79%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 13%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 73%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 16%"></div>
+                      </div>
+
+                      <div class="chart-column">
+                        <div
+                          class="chart-bar present"
+                          style="height: 88%"
+                        ></div>
+                        <div class="chart-bar absent" style="height: 7%"></div>
+                      </div>
+                    </div>
+
+                    <div class="chart-labels">
+                      <span>Mon</span>
+                      <span>Tue</span>
+                      <span>Wed</span>
+                      <span>Thu</span>
+                      <span>Fri</span>
+                      <span>Sat</span>
+                      <span>Sun</span>
+                    </div>
+                  </div>
+
+                  <div class="dash-card">
+                    <div class="card-heading">Recent activity</div>
+
+                    <div class="activity-row">
+                      <div class="activity-avatar"></div>
+
+                      <div class="activity-info">
+                        <div class="activity-name">Kwame Mensah</div>
+
+                        <div class="activity-method">Fingerprint · 08:02</div>
+                      </div>
+
+                      <div class="activity-status">Present</div>
+                    </div>
+
+                    <div class="activity-row">
+                      <div class="activity-avatar"></div>
+
+                      <div class="activity-info">
+                        <div class="activity-name">Ama Owusu</div>
+
+                        <div class="activity-method">RFID · 08:04</div>
+                      </div>
+
+                      <div class="activity-status">Present</div>
+                    </div>
+
+                    <div class="activity-row">
+                      <div class="activity-avatar"></div>
+
+                      <div class="activity-info">
+                        <div class="activity-name">Daniel Boateng</div>
+
+                        <div class="activity-method">Fingerprint · 08:06</div>
+                      </div>
+
+                      <div class="activity-status">Present</div>
+                    </div>
+
+                    <div class="activity-row">
+                      <div class="activity-avatar"></div>
+
+                      <div class="activity-info">
+                        <div class="activity-name">Abena Asare</div>
+
+                        <div class="activity-method">RFID · 08:08</div>
+                      </div>
+
+                      <div class="activity-status">Present</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURES -->
+
+      <section class="section" id="features">
+        <div class="section-container">
+          <div class="section-header">
+            <div class="section-eyebrow">Platform</div>
+
+            <h2 class="section-title">
+              Everything needed to manage attendance.
+            </h2>
+
+            <p class="section-description">
+              A single system for managing identities, devices and attendance
+              across your organisation.
+            </p>
+          </div>
+
+          <div class="features">
+            <div class="feature">
+              <div class="feature-number">01</div>
+
+              <h3>Biometric verification</h3>
+
+              <p>
+                Record attendance using fingerprint authentication connected
+                directly to your organisation.
+              </p>
+            </div>
+
+            <div class="feature">
+              <div class="feature-number">02</div>
+
+              <h3>RFID attendance</h3>
+
+              <p>
+                Give employees or students RFID cards for fast and convenient
+                attendance tracking.
+              </p>
+            </div>
+
+            <div class="feature">
+              <div class="feature-number">03</div>
+
+              <h3>Live attendance</h3>
+
+              <p>
+                View attendance activity as it happens without waiting for
+                manual reports.
+              </p>
+            </div>
+
+            <div class="feature">
+              <div class="feature-number">04</div>
+
+              <h3>People management</h3>
+
+              <p>
+                Create profiles, assign credentials and manage people from one
+                central location.
+              </p>
+            </div>
+
+            <div class="feature">
+              <div class="feature-number">05</div>
+
+              <h3>Device management</h3>
+
+              <p>
+                Keep track of registered attendance devices and their connection
+                status.
+              </p>
+            </div>
+
+            <div class="feature">
+              <div class="feature-number">06</div>
+
+              <h3>Reports</h3>
+
+              <p>
+                Generate attendance records for administrators, managers and
+                supervisors.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TECHNOLOGY -->
+
+      <section class="section split" id="technology">
+        <div class="section-container">
+          <div class="split-layout">
+            <div>
+              <div class="section-eyebrow">How it works</div>
+
+              <h2 class="section-title">Built around your organisation.</h2>
+
+              <p class="section-description">
+                Connect attendance hardware to a central platform and keep every
+                identity and attendance event in one place.
+              </p>
+
+              <div class="split-list">
+                <div class="split-item">
+                  <div class="split-number">01</div>
+
+                  <div>
+                    <h4>Register people</h4>
+
+                    <p>
+                      Create a profile and associate fingerprint or RFID
+                      credentials.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="split-item">
+                  <div class="split-number">02</div>
+
+                  <div>
+                    <h4>Verify identity</h4>
+
+                    <p>
+                      The attendance device verifies the person at the point of
+                      entry.
+                    </p>
+                  </div>
+                </div>
+
+                <div class="split-item">
+                  <div class="split-number">03</div>
+
+                  <div>
+                    <h4>Track attendance</h4>
+
+                    <p>
+                      Attendance events are recorded and available in the
+                      dashboard.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="device">
+              <div class="device-box">
+                <div class="device-screen">
+                  <div class="fingerprint">◎</div>
+                </div>
+
+                <div class="device-status">Ready to scan</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- NUMBERS -->
+
+      <section class="section">
+        <div class="section-container">
+          <div class="section-header">
+            <div class="section-eyebrow">One platform</div>
+
+            <h2 class="section-title">Simple for administrators.</h2>
+          </div>
+
+          <div class="numbers">
+            <div class="number">
+              <strong> 99.9% </strong>
+
+              <span> platform availability </span>
+            </div>
+
+            <div class="number">
+              <strong> 2 </strong>
+
+              <span> attendance methods </span>
+            </div>
+
+            <div class="number">
+              <strong> 24/7 </strong>
+
+              <span> attendance visibility </span>
+            </div>
+
+            <div class="number">
+              <strong> 1 </strong>
+
+              <span> central dashboard </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+
+      <section class="cta" id="contact">
+        <div class="cta-inner">
+          <div class="section-eyebrow">Get started</div>
+
+          <h2>Ready to simplify attendance?</h2>
+
+          <p>Talk to us about deploying Verunum for your organisation.</p>
+
+          <button class="cta-btn" onclick="requestDemo()">
+            Request a demo
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- FOOTER -->
+
+    <footer>
+      <div class="footer-container">
+        <div class="footer-top">
+          <div>
+            <a href="#" class="brand">
+              <span class="brand-mark"> V </span>
+
+              Verunum
+            </a>
+
+            <p class="footer-description">
+              Biometric and RFID attendance management for modern organisations.
+            </p>
+          </div>
+
+          <div class="footer-links">
+            <div class="footer-column">
+              <h4>Platform</h4>
+
+              <a href="#features"> Features </a>
+
+              <a href="#dashboard"> Dashboard </a>
+
+              <a href="#technology"> Technology </a>
+            </div>
+
+            <div class="footer-column">
+              <h4>Company</h4>
+
+              <a href="#"> About </a>
+
+              <a href="#"> Contact </a>
+
+              <a href="#"> Support </a>
+            </div>
+
+            <div class="footer-column">
+              <h4>Access</h4>
+
+              <a href="#"> Client login </a>
+
+              <a href="#"> Admin login </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <span> © 2026 Verunum </span>
+
+          <span> Attendance management </span>
         </div>
       </div>
-    </section>
+    </footer>
 
-    <section class="features">
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <h3>Bank-Grade Security</h3>
-        <p>No raw fingerprint templates ever leave the local terminal. Authentication uses cryptographic device keys with zero-touch binding.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon" style="background:var(--amber-bg); color:var(--amber-ink); border-color:var(--amber-border);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-        </div>
-        <h3>Real-time WebSockets</h3>
-        <p>A persistent bidirectional channel ensures instant remote enrollments, immediate attendance tracking, and live device status.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon" style="background:var(--surface); color:var(--ink); border-color:var(--border);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        </div>
-        <h3>Offline Resilience</h3>
-        <p>Network down? The terminal queues all attendance events locally with unique IDs and syncs flawlessly once reconnected.</p>
-      </div>
-    </section>
+    <script>
+      function toggleMenu() {
+        const links = document.querySelector(".nav-links");
 
-    <section class="flow-section">
-      <h2 style="font-size: 36px; font-weight: 900; letter-spacing: -0.04em; margin-bottom: 16px;">How It Works</h2>
-      <p style="font-size: 18px; color: var(--ink-secondary); max-width: 600px; margin: 0 auto;">A seamless end-to-end flow from platform registration to daily attendance.</p>
-      
-      <div class="flow-grid">
-        <div class="flow-step">
-          <div class="flow-num">1</div>
-          <h4>Provision</h4>
-          <p>Register the MAC address on the dashboard. The device boots up and securely binds itself.</p>
-        </div>
-        <div class="flow-step">
-          <div class="flow-num">2</div>
-          <h4>Enroll</h4>
-          <p>Admins trigger a remote enrollment command. Employees place their finger on the terminal.</p>
-        </div>
-        <div class="flow-step">
-          <div class="flow-num">3</div>
-          <h4>Verify</h4>
-          <p>Daily check-ins happen in milliseconds locally, maintaining high throughput at main gates.</p>
-        </div>
-        <div class="flow-step">
-          <div class="flow-num">4</div>
-          <h4>Monitor</h4>
-          <p>Live attendance events and terminal health metrics appear on your platform dashboard.</p>
-        </div>
-      </div>
-    </section>
-  </main>
+        if (links.classList.contains("mobile-open")) {
+          links.classList.remove("mobile-open");
+        } else {
+          links.classList.add("mobile-open");
+        }
+      }
 
-  <footer class="footer">
-    &copy; 2026 Verunum Platform. Built for hardware integrity and scale.
-  </footer>
-</body>
+      function requestDemo() {
+        alert("Thanks for your interest in Verunum.");
+      }
+
+      document.querySelectorAll('a[href^="#"]').forEach((link) => {
+        link.addEventListener("click", function (event) {
+          const target = document.querySelector(this.getAttribute("href"));
+
+          if (!target) return;
+
+          event.preventDefault();
+
+          target.scrollIntoView({
+            behavior: "smooth",
+          });
+        });
+      });
+    </script>
+  </body>
 </html>
