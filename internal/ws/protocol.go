@@ -40,18 +40,22 @@ type HelloAckPayload struct {
 }
 
 type EnrollStartPayload struct {
+	RequestID      string `json:"request_id"`
 	UserID         string `json:"user_id"`
 	FingerIndex    int    `json:"finger_index,omitempty"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 }
 
+// EnrollResultPayload is the report the TAB5 sends after a local R503
+// enrollment operation. Raw templates never leave the device.
 type EnrollResultPayload struct {
-	UserID       string `json:"user_id"`
-	FingerIndex  int    `json:"finger_index,omitempty"`
-	TemplateHash string `json:"template_hash,omitempty"`
-	Status       string `json:"status,omitempty"`
-	RFID         string `json:"rfid,omitempty"`
-	Error        string `json:"error,omitempty"`
+	CommandID   int    `json:"command_id,omitempty"`
+	RequestID   string `json:"request_id,omitempty"`
+	UserID      string `json:"user_id"`
+	FingerIndex int    `json:"finger_index,omitempty"`
+	Success     *bool  `json:"success,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 type AttendancePayload struct {

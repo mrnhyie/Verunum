@@ -243,26 +243,34 @@ func (h *Hub) HelloHandler() gin.HandlerFunc {
 			})
 
 			c.JSON(http.StatusCreated, gin.H{
-				"type":   TypeHelloAck,
-				"status": "provisioned",
-				"payload": HelloAckPayload{
-					DeviceID: devIDStr, APIKey: apiKey, ProtocolVersion: ProtocolVersion,
-					Message: "Device successfully bound and activated.",
-				},
+				"status":           "provisioned",
+				"device_id":        devIDStr,
+				"organization_id":  orgID,
+				"device_name":      strings.TrimSpace(p.DeviceName),
+				"mac_address":      mac,
+				"api_key":          apiKey,
+				"protocol_version": ProtocolVersion,
+				"firmware_version": p.FirmwareVersion,
+				"message":          "Store this API key securely. It is returned only during provisioning.",
 			})
 			return
 		}
 
 		// 2. Existing device authentication.
 		if presentedKey == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"type": TypeError, "payload": ErrorPayload{Code: "auth_failed", Message: "device authentication failed: api_key required"}})
+			var existing int
+			if err := h.db.QueryRow("SELECT count(*) FROM devices WHERE UPPER(mac_address)=?", mac).Scan(&existing); err == nil && existing > 0 {
+				c.JSON(http.StatusConflict, gin.H{"error": "device already provisioned; api_key required"})
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": "unknown device MAC; create a pending provisioning record first"})
 			return
 		}
 
 		var deviceID, orgID int
 		if err := h.db.QueryRow(`SELECT id, organization_id FROM devices
 			WHERE UPPER(mac_address)=? AND api_key_hash=? AND status!='revoked'`, mac, hashKey(presentedKey)).Scan(&deviceID, &orgID); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"type": TypeError, "payload": ErrorPayload{Code: "auth_failed", Message: "device authentication failed"}})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "device authentication failed"})
 			return
 		}
 
@@ -270,14 +278,12 @@ func (h *Hub) HelloHandler() gin.HandlerFunc {
 		_, _ = h.db.Exec("UPDATE devices SET name=?,status='active',last_heartbeat=?,last_seen_at=? WHERE id=? AND organization_id=?",
 			strings.TrimSpace(p.DeviceName), now, now, deviceID, orgID)
 
-		devIDStr := fmt.Sprintf("dev_%d", deviceID)
 		c.JSON(http.StatusOK, gin.H{
-			"type":   TypeHelloAck,
-			"status": "authenticated",
-			"payload": HelloAckPayload{
-				DeviceID: devIDStr, ProtocolVersion: ProtocolVersion,
-				Message: "Connected successfully.",
-			},
+			"status":           "authenticated",
+			"device_id":        fmt.Sprintf("dev_%d", deviceID),
+			"organization_id":  orgID,
+			"protocol_version": ProtocolVersion,
+			"message":          "Connected successfully.",
 		})
 	}
 }
@@ -286,7 +292,7 @@ func (h *Hub) HelloHandler() gin.HandlerFunc {
 // REST Enroll Result — replaces WebSocket enroll.result frame
 // ---------------------------------------------------------------------------
 
-// EnrollResultHandler handles POST /api/v1/devices/:id/enroll-result
+// EnrollResultHandler handles POST /api/v1/devices/:id/enrollment/result
 func (h *Hub) EnrollResultHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		deviceID := c.MustGet("device_id").(int)
@@ -303,6 +309,13 @@ func (h *Hub) EnrollResultHandler() gin.HandlerFunc {
 		}
 
 		status := p.Status
+		if p.Success != nil {
+			if *p.Success {
+				status = "enrolled"
+			} else {
+				status = "failed"
+			}
+		}
 		fp := "failed"
 		switch status {
 		case "success", "enrolled":
@@ -334,10 +347,12 @@ func (h *Hub) EnrollResultHandler() gin.HandlerFunc {
 			ON CONFLICT(device_id,slot_id) DO UPDATE SET status=excluded.status, enrolled_at=excluded.enrolled_at, user_id=excluded.user_id`,
 			orgID, userID, deviceID, slotID, status, now)
 
-		// ACK any matching pending commands
-		requestID := c.Query("request_id")
-		if requestID != "" {
-			_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND id=CAST(? AS INTEGER)", now, orgID, deviceID, requestID)
+		// Ack the matching pending command: prefer explicit command_id, then
+		// request_id, then fall back to the newest pending enroll.start for this user.
+		if p.CommandID > 0 {
+			_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND id=?", now, orgID, deviceID, p.CommandID)
+		} else if p.RequestID != "" {
+			_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND id=CAST(? AS INTEGER)", now, orgID, deviceID, p.RequestID)
 		}
 		_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND status IN ('pending','delivered') AND command_type='enroll.start' AND payload_json LIKE ?", now, orgID, deviceID, "%"+p.UserID+"%")
 
@@ -382,6 +397,15 @@ func (h *Hub) StartEnrollmentWithParams(orgID, deviceID, userID int, userUUID st
 	}
 	cmdID, _ := r.LastInsertId()
 	requestID = strconv.FormatInt(cmdID, 10)
+
+	// The device correlates its enrollment result with this command via request_id.
+	payloadBytes, _ = json.Marshal(EnrollStartPayload{
+		RequestID:      requestID,
+		UserID:         userUUID,
+		FingerIndex:    fingerIndex,
+		TimeoutSeconds: timeoutSeconds,
+	})
+	_, _ = h.db.Exec("UPDATE device_commands SET payload_json=? WHERE id=?", string(payloadBytes), cmdID)
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	_, _ = h.db.Exec("UPDATE users SET fingerprint_status='pending',updated_at=? WHERE id=? AND organization_id=?", now, userID, orgID)

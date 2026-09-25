@@ -35,11 +35,11 @@ type claims struct {
 	Expires       int64
 }
 type eventInput struct {
-	DeviceID, UserID int    `json:"device_id"`
-	EventID          string `json:"event_id"`
-	Event            string `json:"event"`
-	Timestamp        string `json:"timestamp"`
-	Method           string `json:"method"`
+	UserID    int    `json:"user_id"`
+	EventID   string `json:"event_id"`
+	Event     string `json:"event"`
+	Timestamp string `json:"timestamp"`
+	Method    string `json:"method"`
 }
 
 func main() {
@@ -137,11 +137,9 @@ func main() {
 	device.POST("/heartbeat", a.heartbeat)
 	device.GET("/commands", a.commands)
 	device.POST("/commands/:cmdId/ack", a.ackCommand)
-	device.POST("/enroll-result", a.hub.EnrollResultHandler())
-
-	attendance := api.Group("", a.deviceHeaderAuth())
-	attendance.POST("/attendance", a.ingestAttendance)
-	attendance.POST("/attendance/batch", a.ingestBatch)
+	device.POST("/enrollment/result", a.hub.EnrollResultHandler())
+	device.POST("/attendance", a.ingestAttendance)
+	device.POST("/attendance/batch", a.ingestBatch)
 
 	// FIXED: Replaced *addr with explicit string to prevent compile error
 	log.Printf("Verunum running on 0.0.0.0:8080")
@@ -412,21 +410,8 @@ func (a *app) superAdmin() gin.HandlerFunc {
 	}
 }
 func (a *app) org(c *gin.Context) int      { return c.MustGet("claims").(claims).OrgID }
-func deviceID(c *gin.Context) (int, error) { return strconv.Atoi(c.Param("id")) }
-func (a *app) deviceHeaderAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		key := c.GetHeader("X-Device-Key")
-		var id, org int
-		err := a.db.QueryRow("SELECT id,organization_id FROM devices WHERE api_key_hash=? AND status!='revoked'", hash(key)).Scan(&id, &org)
-		if key == "" || err != nil {
-			c.JSON(401, gin.H{"error": "valid X-Device-Key required"})
-			c.Abort()
-			return
-		}
-		c.Set("device_id", id)
-		c.Set("org_id", org)
-		c.Next()
-	}
+func deviceID(c *gin.Context) (int, error) {
+	return strconv.Atoi(strings.TrimPrefix(c.Param("id"), "dev_"))
 }
 func (a *app) deviceAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -529,14 +514,7 @@ func (a *app) ingestAttendance(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid event"})
 		return
 	}
-	if in.DeviceID == 0 {
-		in.DeviceID = c.MustGet("device_id").(int)
-	}
-	if in.DeviceID != c.MustGet("device_id").(int) {
-		c.JSON(403, gin.H{"error": "device_id does not match API key"})
-		return
-	}
-	id, status, e := a.insertEvent(c.MustGet("org_id").(int), in)
+	id, status, _, e := a.insertEvent(c.MustGet("org_id").(int), c.MustGet("device_id").(int), in)
 	if e != nil {
 		c.JSON(400, gin.H{"error": e.Error()})
 		return
@@ -553,13 +531,7 @@ func (a *app) ingestBatch(c *gin.Context) {
 	device := c.MustGet("device_id").(int)
 	created := 0
 	for _, e := range in {
-		if e.DeviceID == 0 {
-			e.DeviceID = device
-		}
-		if e.DeviceID != device {
-			continue
-		}
-		if id, _, err := a.insertEvent(org, e); err == nil && id > 0 {
+		if id, _, isNew, err := a.insertEvent(org, device, e); err == nil && id > 0 && isNew {
 			created++
 		}
 	}
@@ -594,9 +566,9 @@ func nullIfEmpty(v string) any {
 	return v
 }
 
-func (a *app) insertEvent(org int, in eventInput) (int64, string, error) {
-	if in.UserID == 0 || in.DeviceID == 0 || in.Event == "" {
-		return 0, "", fmt.Errorf("user_id, device_id and event required")
+func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool, error) {
+	if in.UserID == 0 || in.Event == "" {
+		return 0, "", false, fmt.Errorf("user_id and event required")
 	}
 	t, err := time.Parse(time.RFC3339, in.Timestamp)
 	if err != nil {
@@ -607,32 +579,33 @@ func (a *app) insertEvent(org int, in eventInput) (int64, string, error) {
 	}
 	var ok int
 	if err = a.db.QueryRow("SELECT count(*) FROM users WHERE id=? AND organization_id=? AND status='active'", in.UserID, org).Scan(&ok); err != nil || ok == 0 {
-		return 0, "", fmt.Errorf("user not found in device organization")
+		return 0, "", false, fmt.Errorf("user not found in device organization")
 	}
 	status := a.eventStatus(org, in.Event, t)
 	if in.EventID != "" {
 		var existingID int64
 		if err := a.db.QueryRow("SELECT id FROM attendance_events WHERE event_id=? AND organization_id=?", in.EventID, org).Scan(&existingID); err == nil {
-			return existingID, status, nil
+			return existingID, status, false, nil
 		}
 	}
-	r, err := a.db.Exec("INSERT OR IGNORE INTO attendance_events(organization_id,user_id,device_id,event_id,event_type,timestamp,verification_method,attendance_status) VALUES(?,?,?,?,?,?,?,?)", org, in.UserID, in.DeviceID, nullIfEmpty(in.EventID), in.Event, t.UTC().Format(time.RFC3339), in.Method, status)
+	r, err := a.db.Exec("INSERT OR IGNORE INTO attendance_events(organization_id,user_id,device_id,event_id,event_type,timestamp,verification_method,attendance_status) VALUES(?,?,?,?,?,?,?,?)", org, in.UserID, deviceID, nullIfEmpty(in.EventID), in.Event, t.UTC().Format(time.RFC3339), in.Method, status)
 	if err != nil {
-		return 0, "", err
+		return 0, "", false, err
 	}
 	id, _ := r.LastInsertId()
-	if id == 0 {
+	created := id > 0
+	if !created {
 		if in.EventID != "" {
 			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE event_id=? AND organization_id=?", in.EventID, org).Scan(&id)
 		}
 		if id == 0 {
-			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE organization_id=? AND user_id=? AND device_id=? AND timestamp=? AND event_type=?", org, in.UserID, in.DeviceID, t.UTC().Format(time.RFC3339), in.Event).Scan(&id)
+			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE organization_id=? AND user_id=? AND device_id=? AND timestamp=? AND event_type=?", org, in.UserID, deviceID, t.UTC().Format(time.RFC3339), in.Event).Scan(&id)
 		}
 	}
 	if id > 0 {
 		a.queueSMS(org, int(id), in.UserID, in.Event)
 	}
-	return id, status, nil
+	return id, status, created, nil
 }
 func (a *app) eventStatus(org int, event string, t time.Time) string {
 	if event != "clock_in" {
@@ -1197,8 +1170,9 @@ func (a *app) enrollRequest(c *gin.Context) {
 	}
 
 	var in struct {
-		UserID      string `json:"user_id"`
-		FingerIndex int    `json:"finger_index"`
+		UserID         string `json:"user_id"`
+		FingerIndex    int    `json:"finger_index"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
 	}
 	if err := c.ShouldBindJSON(&in); err != nil || in.UserID == "" {
 		c.JSON(400, gin.H{"error": "user_id is required"})
@@ -1222,7 +1196,7 @@ func (a *app) enrollRequest(c *gin.Context) {
 		fingerIndex = 1
 	}
 
-	reqID, delivered, err := a.hub.StartEnrollmentWithParams(orgID, deviceID, userID, userUUID, fingerIndex, 30)
+	reqID, delivered, err := a.hub.StartEnrollmentWithParams(orgID, deviceID, userID, userUUID, fingerIndex, in.TimeoutSeconds)
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
@@ -1679,7 +1653,8 @@ func (a *app) insertEventByUUID(orgID, deviceID int, eventID, userUUID, event, t
 	if err := a.db.QueryRow("SELECT id FROM users WHERE uuid=? AND organization_id=? AND status='active'", userUUID, orgID).Scan(&userID); err != nil {
 		return 0, "", fmt.Errorf("user not found in device organization")
 	}
-	return a.insertEvent(orgID, eventInput{DeviceID: deviceID, UserID: userID, EventID: eventID, Event: event, Timestamp: timestamp, Method: method})
+	id, status, _, err := a.insertEvent(orgID, deviceID, eventInput{UserID: userID, EventID: eventID, Event: event, Timestamp: timestamp, Method: method})
+	return id, status, err
 }
 
 func (a *app) userStatus(c *gin.Context) {

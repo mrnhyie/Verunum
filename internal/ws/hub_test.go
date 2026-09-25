@@ -1,9 +1,11 @@
 package ws
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,13 +14,18 @@ import (
 	appdb "github.com/sparklabafrica/verunum/internal/db"
 )
 
-func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
+func setupTestDB(t *testing.T) *sql.DB {
 	gin.SetMode(gin.TestMode)
 	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer database.Close()
+	t.Cleanup(func() { database.Close() })
+	return database
+}
+
+func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
+	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(name,type) VALUES('Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +50,7 @@ func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
 	r := gin.New()
 	r.POST("/api/v1/devices/hello", hub.HelloHandler())
 
-	// 1. Authenticate via hello
+	// 1. Authenticate via hello — flat REST response, no envelope
 	helloBody := `{"mac_address":"AA:AA:AA:AA:AA:AA","device_name":"Gate","protocol_version":1,"api_key":"dev-secret"}`
 	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -57,12 +64,12 @@ func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &helloResp); err != nil {
 		t.Fatal(err)
 	}
-	if helloResp["type"] != TypeHelloAck || helloResp["status"] != "authenticated" {
-		t.Fatalf("expected hello.ack authenticated, got %v", helloResp)
+	if helloResp["status"] != "authenticated" || helloResp["device_id"] != "dev_1" {
+		t.Fatalf("expected flat authenticated hello response, got %v", helloResp)
 	}
 
 	// 2. Start enrollment
-	reqID, delivered, err := hub.StartEnrollment(1, 1, 1, "11111111-1111-4111-8111-111111111111")
+	requestID, delivered, err := hub.StartEnrollment(1, 1, 1, "11111111-1111-4111-8111-111111111111")
 	if err != nil {
 		t.Fatalf("start enroll: err=%v", err)
 	}
@@ -71,20 +78,31 @@ func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
 		t.Fatal("expected delivered=true for device with recent heartbeat")
 	}
 
-	// 3. Verify command is pending in DB
-	var cmdCount int
-	if err := database.QueryRow("SELECT count(*) FROM device_commands WHERE status='pending' AND device_id=1").Scan(&cmdCount); err != nil || cmdCount == 0 {
-		t.Fatalf("expected pending command, got count=%d err=%v", cmdCount, err)
+	// 3. Verify command is pending and its payload carries the request_id
+	var payloadJSON, cmdStatus string
+	var cmdID int
+	if err := database.QueryRow("SELECT id,payload_json,status FROM device_commands WHERE device_id=1").Scan(&cmdID, &payloadJSON, &cmdStatus); err != nil {
+		t.Fatal(err)
+	}
+	if cmdStatus != "pending" {
+		t.Fatalf("expected pending command, got %q", cmdStatus)
+	}
+	var polled EnrollStartPayload
+	if err := json.Unmarshal([]byte(payloadJSON), &polled); err != nil {
+		t.Fatal(err)
+	}
+	if strconv.Itoa(cmdID) != requestID || polled.RequestID != requestID {
+		t.Fatalf("request_id not echoed in payload: cmdID=%d requestID=%s payload=%s", cmdID, requestID, payloadJSON)
 	}
 
-	// 4. Submit enroll result via REST
-	enrollResultBody := `{"user_id":"11111111-1111-4111-8111-111111111111","status":"enrolled","finger_index":1}`
-	enrollReq := httptest.NewRequest("POST", "/api/v1/devices/1/enroll-result?request_id="+reqID, strings.NewReader(enrollResultBody))
+	// 4. Submit enroll result via REST with the PDF contract body
+	enrollResultBody := `{"command_id":` + strconv.Itoa(cmdID) + `,"request_id":"` + requestID + `","user_id":"11111111-1111-4111-8111-111111111111","finger_index":1,"success":true}`
+	enrollReq := httptest.NewRequest("POST", "/api/v1/devices/1/enrollment/result", strings.NewReader(enrollResultBody))
 	enrollReq.Header.Set("Content-Type", "application/json")
 
 	// Simulate deviceAuth middleware by setting context values
 	enrollR := gin.New()
-	enrollR.POST("/api/v1/devices/:id/enroll-result", func(c *gin.Context) {
+	enrollR.POST("/api/v1/devices/:id/enrollment/result", func(c *gin.Context) {
 		c.Set("device_id", 1)
 		c.Set("org_id", 1)
 		hub.EnrollResultHandler()(c)
@@ -96,20 +114,19 @@ func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", wEnroll.Code, wEnroll.Body.String())
 	}
 
-	// 5. Verify fingerprint status updated
+	// 5. Verify fingerprint status updated and command acked
 	var fp string
 	if err := database.QueryRow("SELECT fingerprint_status FROM users WHERE id=1").Scan(&fp); err != nil || fp != "enrolled" {
 		t.Fatalf("fingerprint status %q err=%v", fp, err)
 	}
+	var ackedCount int
+	if err := database.QueryRow("SELECT count(*) FROM device_commands WHERE id=? AND status='acked'", cmdID).Scan(&ackedCount); err != nil || ackedCount != 1 {
+		t.Fatalf("expected command acked, got count=%d err=%v", ackedCount, err)
+	}
 }
 
 func TestDeviceAutoProvisioning(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	database, err := appdb.Open(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
+	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(id, name, type) VALUES(10, 'Test Org', 'school')"); err != nil {
 		t.Fatal(err)
 	}
@@ -139,14 +156,13 @@ func TestDeviceAutoProvisioning(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp["type"] != TypeHelloAck || resp["status"] != "provisioned" {
-		t.Fatalf("expected hello.ack provisioned, got %v", resp)
+	if resp["status"] != "provisioned" || resp["device_id"] != "dev_1" {
+		t.Fatalf("expected flat provisioned response, got %v", resp)
 	}
 
-	payload := resp["payload"].(map[string]any)
-	apiKey, ok := payload["api_key"].(string)
+	apiKey, ok := resp["api_key"].(string)
 	if !ok || !strings.HasPrefix(apiKey, "dev_sec_") {
-		t.Fatalf("expected dev_sec_ prefix for api key, got %v", payload["api_key"])
+		t.Fatalf("expected dev_sec_ prefix for api key, got %v", resp["api_key"])
 	}
 
 	// Verify SSE broadcast was received
@@ -177,12 +193,7 @@ func TestDeviceAutoProvisioning(t *testing.T) {
 }
 
 func TestDeviceMustProvideValidMAC(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	database, err := appdb.Open(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
+	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
@@ -204,12 +215,7 @@ func TestDeviceMustProvideValidMAC(t *testing.T) {
 }
 
 func TestUnregisteredMACHello(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	database, err := appdb.Open(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
+	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
@@ -218,25 +224,45 @@ func TestUnregisteredMACHello(t *testing.T) {
 	r := gin.New()
 	r.POST("/api/v1/devices/hello", hub.HelloHandler())
 
-	// Unregistered MAC without API key
+	// Unregistered MAC without API key — PDF contract: 404
 	helloBody := `{"mac_address":"11:22:33:44:55:66","device_name":"Unknown","protocol_version":1}`
 	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAlreadyProvisionedMACHelloWithoutKey(t *testing.T) {
+	database := setupTestDB(t)
+	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status) VALUES(1,'Gate','AA:AA:AA:AA:AA:AA',?,'active')", hashKey("dev-secret")); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := NewHub(database, nil)
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
+
+	// PDF contract: already-provisioned MAC re-helloing without a key → 409
+	helloBody := `{"mac_address":"AA:AA:AA:AA:AA:AA","device_name":"Gate","protocol_version":1}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
 func TestHeartbeatBasedConnectivity(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	database, err := appdb.Open(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
+	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(name,type) VALUES('Acme','school')"); err != nil {
 		t.Fatal(err)
 	}

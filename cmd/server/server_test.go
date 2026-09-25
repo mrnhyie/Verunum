@@ -12,12 +12,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	appdb "github.com/sparklabafrica/verunum/internal/db"
 	"github.com/sparklabafrica/verunum/internal/ws"
 )
 
-func setupTestServer(t *testing.T) (*gin.Engine, *app) {
+func setupTestServer(t *testing.T) (*gin.Engine, *app, string) {
 	gin.SetMode(gin.TestMode)
 	databasePath := filepath.Join(t.TempDir(), "verunum-test.db")
 	database, err := appdb.Open(databasePath)
@@ -39,237 +38,262 @@ func setupTestServer(t *testing.T) (*gin.Engine, *app) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// Public and platform routes
-	r.GET("/ws/device", a.hub.Gin())
-
 	api := r.Group("/api/v1")
+	api.POST("/devices/hello", a.hub.HelloHandler())
 	api.GET("/events", a.hub.SSEHandler())
-	api.GET("/platform/events", a.hub.SSEHandler())
 	adminAPI := api.Group("", a.adminAuth())
 	adminAPI.POST("/platform/devices/pending", a.registerPendingDevice)
 	adminAPI.POST("/devices/:id/enroll-request", a.enrollRequest)
 
-	platform := r.Group("/platform", a.adminAuth(), a.superAdmin())
-	platform.GET("/organisations/:org_id", a.organizationProfilePage)
+	device := api.Group("/devices/:id", a.deviceAuth())
+	device.POST("/heartbeat", a.heartbeat)
+	device.GET("/commands", a.commands)
+	device.POST("/commands/:cmdId/ack", a.ackCommand)
+	device.POST("/enrollment/result", a.hub.EnrollResultHandler())
+	device.POST("/attendance", a.ingestAttendance)
+	device.POST("/attendance/batch", a.ingestBatch)
 
-	return r, a
-}
-
-func TestPendingDeviceAndAutoProvisioningFlow(t *testing.T) {
-	r, a := setupTestServer(t)
-
-	// 1. Submit pending device registration
-	payload := map[string]string{
-		"org_id":      "1",
-		"device_name": "Main Entrance Gate",
-		"mac_address": "AA:BB:CC:DD:EE:FF",
-		"location":    "Lobby",
-	}
-	body, _ := json.Marshal(payload)
-	req := httptest.NewRequest("POST", "/api/v1/platform/devices/pending", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
 	var adminUserID, adminOrgID int
 	if err := a.db.QueryRow("SELECT id, organization_id FROM users WHERE email=?", "admin@demo.local").Scan(&adminUserID, &adminOrgID); err != nil {
 		t.Fatal(err)
 	}
-	claimsToken := a.token(claims{UserID: adminUserID, OrgID: adminOrgID, Role: "super_admin", Expires: time.Now().Add(time.Hour).Unix()})
-	req.Header.Set("Authorization", "Bearer "+claimsToken)
+	token := a.token(claims{UserID: adminUserID, OrgID: adminOrgID, Role: "super_admin", Expires: time.Now().Add(time.Hour).Unix()})
+	return r, a, token
+}
+
+func jsonRequest(t *testing.T, r *gin.Engine, method, path, token, deviceKey string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if deviceKey != "" {
+		req.Header.Set("X-Device-Key", deviceKey)
+	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
+	return w
+}
 
+func TestPendingDeviceAndAutoProvisioningFlow(t *testing.T) {
+	r, a, token := setupTestServer(t)
+
+	// 1. Admin submits a pending device provisioning record.
+	w := jsonRequest(t, r, "POST", "/api/v1/platform/devices/pending", token, "", map[string]string{
+		"org_id":      "1",
+		"device_name": "Main Entrance Gate",
+		"mac_address": "AA:BB:CC:DD:EE:FF",
+		"location":    "Lobby",
+	})
 	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201 Created, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 201 for pending registration, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// 2. Connect device via WebSocket. Initial provisioning is driven by hello.
-	srv := httptest.NewServer(r)
-	defer srv.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/device"
-
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("WebSocket dial failed: %v (status %d)", err, resp.StatusCode)
-	}
-	defer conn.Close()
-
-	// 3. Device sends hello, then reads hello.ack
-	hello, _ := ws.MarshalEnvelope(ws.TypeHello, "", "", ws.HelloPayload{MACAddress: "AA:BB:CC:DD:EE:FF", DeviceName: "Gate", ProtocolVersion: ws.ProtocolVersion})
-	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
-		t.Fatalf("failed to send hello: %v", err)
-	}
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("failed to read WS message: %v", err)
+	// 2. Unknown MAC is rejected with 404 before any pending record exists.
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "11:22:33:44:55:66", "device_name": "Unknown", "protocol_version": 1,
+	})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown MAC, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var env ws.Envelope
-	if err := json.Unmarshal(msg, &env); err != nil {
-		t.Fatalf("failed to parse envelope: %v", err)
+	// 3. TAB5 calls hello with the pending MAC and is auto-provisioned.
+	sseCh := a.hub.SubscribeSSE()
+	defer a.hub.UnsubscribeSSE(sseCh)
+
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "AA:BB:CC:DD:EE:FF", "device_name": "Main Entrance Gate", "protocol_version": 1, "firmware_version": "1.0.0",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 provisioned, got %d: %s", w.Code, w.Body.String())
 	}
-	if env.Type != ws.TypeHelloAck || env.Status != "provisioned" {
-		t.Fatalf("expected hello.ack with status provisioned, got %s", msg)
+	var ack map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack["status"] != "provisioned" || ack["mac_address"] != "AA:BB:CC:DD:EE:FF" {
+		t.Fatalf("unexpected provisioning response: %v", ack)
+	}
+	apiKey, _ := ack["api_key"].(string)
+	if !strings.HasPrefix(apiKey, "dev_sec_") {
+		t.Fatalf("expected dev_sec_ API key, got %q", apiKey)
+	}
+	if ack["organization_id"].(float64) != 1 {
+		t.Fatalf("expected organization_id 1, got %v", ack["organization_id"])
 	}
 
-	var helloAck ws.HelloAckPayload
-	_ = json.Unmarshal(env.Payload, &helloAck)
-	if !strings.HasPrefix(helloAck.APIKey, "dev_sec_") {
-		t.Fatalf("expected dev_sec_ API key, got %s", helloAck.APIKey)
+	select {
+	case evt := <-sseCh:
+		if evt.Event != "device.provisioned" || evt.MACAddress != "AA:BB:CC:DD:EE:FF" {
+			t.Fatalf("unexpected SSE event: %+v", evt)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for device.provisioned SSE event")
 	}
 
-	// 4. Test Biometric enrollment trigger (online device)
+	// 4. Re-hello without a key is now a conflict (already provisioned).
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "AA:BB:CC:DD:EE:FF", "device_name": "Main Entrance Gate", "protocol_version": 1,
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for already-provisioned MAC, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// 5. Authenticated hello with the stored key succeeds.
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "AA:BB:CC:DD:EE:FF", "device_name": "Main Entrance Gate", "protocol_version": 1, "api_key": apiKey,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 authenticated hello, got %d: %s", w.Code, w.Body.String())
+	}
+
 	var devID int
-	_ = a.db.QueryRow("SELECT id FROM devices WHERE mac_address='AA:BB:CC:DD:EE:FF'").Scan(&devID)
+	if err := a.db.QueryRow("SELECT id FROM devices WHERE mac_address='AA:BB:CC:DD:EE:FF'").Scan(&devID); err != nil {
+		t.Fatal(err)
+	}
+	devPath := fmt.Sprintf("/api/v1/devices/dev_%d", devID)
 
-	enrollBody, _ := json.Marshal(map[string]any{
-		"user_id":      "admin@demo.local",
-		"finger_index": 1,
+	// 6. Heartbeat keeps the device online; commands poll returns the enroll command.
+	w = jsonRequest(t, r, "POST", devPath+"/heartbeat", "", apiKey, nil)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 heartbeat, got %d: %s", w.Code, w.Body.String())
+	}
+	if !a.hub.Connected(devID) {
+		t.Fatal("expected device online after hello/heartbeat")
+	}
+
+	// 7. Enrollment request requires admin auth and an online device.
+	enrollBody := map[string]any{"user_id": "admin@demo.local", "finger_index": 1, "timeout_seconds": 30}
+	w = jsonRequest(t, r, "POST", devPath+"/enroll-request", "", "", enrollBody)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated enroll-request, got %d", w.Code)
+	}
+	w = jsonRequest(t, r, "POST", devPath+"/enroll-request", token, "", enrollBody)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 enroll-request, got %d: %s", w.Code, w.Body.String())
+	}
+	var enrollResp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &enrollResp)
+	requestID, _ := enrollResp["request_id"].(string)
+	if requestID == "" {
+		t.Fatalf("expected request_id in enroll-request response: %v", enrollResp)
+	}
+
+	w = jsonRequest(t, r, "GET", devPath+"/commands", "", apiKey, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 command poll, got %d: %s", w.Code, w.Body.String())
+	}
+	var poll struct {
+		Commands []struct {
+			ID          int    `json:"id"`
+			CommandType string `json:"command_type"`
+			Payload     struct {
+				RequestID   string `json:"request_id"`
+				UserID      string `json:"user_id"`
+				FingerIndex int    `json:"finger_index"`
+			} `json:"payload"`
+		} `json:"commands"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &poll); err != nil {
+		t.Fatal(err)
+	}
+	if len(poll.Commands) != 1 || poll.Commands[0].CommandType != "enroll.start" {
+		t.Fatalf("expected one enroll.start command, got %s", w.Body.String())
+	}
+	cmd := poll.Commands[0]
+	if cmd.Payload.RequestID != requestID {
+		t.Fatalf("command payload request_id %q does not match enroll-request %q", cmd.Payload.RequestID, requestID)
+	}
+
+	// 8. Device reports the enrollment result; the command is acknowledged.
+	var adminUUID string
+	_ = a.db.QueryRow("SELECT uuid FROM users WHERE email='admin@demo.local'").Scan(&adminUUID)
+	w = jsonRequest(t, r, "POST", devPath+"/enrollment/result", "", apiKey, map[string]any{
+		"command_id": cmd.ID, "request_id": requestID, "user_id": adminUUID, "finger_index": 1, "success": true,
 	})
-
-	// Enrollment is an admin action and must not be callable anonymously.
-	unauthEnrollReq := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/devices/dev_%d/enroll-request", devID), bytes.NewReader(enrollBody))
-	unauthEnrollReq.Header.Set("Content-Type", "application/json")
-	wUnauth := httptest.NewRecorder()
-	r.ServeHTTP(wUnauth, unauthEnrollReq)
-	if wUnauth.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for unauthenticated enrollment request, got %d: %s", wUnauth.Code, wUnauth.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 enrollment result, got %d: %s", w.Code, w.Body.String())
 	}
-	enrollReq := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/devices/dev_%d/enroll-request", devID), bytes.NewReader(enrollBody))
-	enrollReq.Header.Set("Content-Type", "application/json")
-	enrollReq.Header.Set("Authorization", "Bearer "+claimsToken)
-	wEnroll := httptest.NewRecorder()
-	r.ServeHTTP(wEnroll, enrollReq)
-
-	if wEnroll.Code != http.StatusAccepted {
-		t.Fatalf("expected 202 Accepted for online device, got %d: %s", wEnroll.Code, wEnroll.Body.String())
+	var fpStatus, cmdStatus string
+	_ = a.db.QueryRow("SELECT fingerprint_status FROM users WHERE email='admin@demo.local'").Scan(&fpStatus)
+	if fpStatus != "enrolled" {
+		t.Fatalf("expected fingerprint_status enrolled, got %q", fpStatus)
+	}
+	_ = a.db.QueryRow("SELECT status FROM device_commands WHERE id=?", cmd.ID).Scan(&cmdStatus)
+	if cmdStatus != "acked" {
+		t.Fatalf("expected command acked, got %q", cmdStatus)
 	}
 
-	// The online device must receive the enrollment command over WebSocket.
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, commandMsg, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("expected enroll.start command: %v", err)
+	// 9. Attendance ingest is idempotent on event_id.
+	attBody := map[string]any{"user_id": 1, "event_id": "evt-unique-001", "event": "clock_in", "timestamp": time.Now().UTC().Format(time.RFC3339), "method": "fingerprint"}
+	w = jsonRequest(t, r, "POST", devPath+"/attendance", "", apiKey, attBody)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 attendance, got %d: %s", w.Code, w.Body.String())
 	}
-	var commandEnv ws.Envelope
-	if err := json.Unmarshal(commandMsg, &commandEnv); err != nil || commandEnv.Type != ws.TypeEnrollStart {
-		t.Fatalf("expected enroll.start, got %s", commandMsg)
+	var attResp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &attResp)
+	firstID := attResp["id"]
+
+	w = jsonRequest(t, r, "POST", devPath+"/attendance", "", apiKey, attBody)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on retry, got %d: %s", w.Code, w.Body.String())
+	}
+	var retryResp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &retryResp)
+	if retryResp["id"] != firstID {
+		t.Fatalf("expected duplicate event_id to return original id %v, got %v", firstID, retryResp["id"])
 	}
 
-	// Closing before an ACK must return the command to pending so it can be replayed.
-	_ = conn.Close()
-	deadline := time.Now().Add(2 * time.Second)
-	for a.hub.Connected(devID) && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if a.hub.Connected(devID) {
-		t.Fatal("device connection did not close before reconnect test")
-	}
-
-	reconnectHeader := http.Header{}
-	reconnectHeader.Set("X-Device-Key", helloAck.APIKey)
-	conn2, _, err := websocket.DefaultDialer.Dial(wsURL, reconnectHeader)
-	if err != nil {
-		t.Fatalf("device reconnect failed: %v", err)
-	}
-	defer conn2.Close()
-
-	reconnectHello, _ := ws.MarshalEnvelope(ws.TypeHello, "", "", ws.HelloPayload{
-		MACAddress: "AA:BB:CC:DD:EE:FF", DeviceName: "Gate", ProtocolVersion: ws.ProtocolVersion, APIKey: helloAck.APIKey,
+	// 10. Batch sync of queued offline events.
+	w = jsonRequest(t, r, "POST", devPath+"/attendance/batch", "", apiKey, []map[string]any{
+		{"user_id": 1, "event_id": "evt-batch-001", "event": "clock_out", "timestamp": time.Now().UTC().Format(time.RFC3339), "method": "fingerprint"},
+		{"user_id": 1, "event_id": "evt-batch-001", "event": "clock_out", "timestamp": time.Now().UTC().Format(time.RFC3339), "method": "fingerprint"},
 	})
-	if err := conn2.WriteMessage(websocket.TextMessage, reconnectHello); err != nil {
-		t.Fatalf("failed to send reconnect hello: %v", err)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 batch, got %d: %s", w.Code, w.Body.String())
 	}
-	_ = conn2.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, reconnectAck, err := conn2.ReadMessage()
-	if err != nil {
-		t.Fatalf("failed to read reconnect hello.ack: %v", err)
-	}
-	var reconnectEnv ws.Envelope
-	if err := json.Unmarshal(reconnectAck, &reconnectEnv); err != nil || reconnectEnv.Type != ws.TypeHelloAck || reconnectEnv.Status != "authenticated" {
-		t.Fatalf("expected authenticated reconnect, got %s", reconnectAck)
-	}
-	_, replayedCommand, err := conn2.ReadMessage()
-	if err != nil {
-		t.Fatalf("expected pending enroll.start replay: %v", err)
-	}
-	var replayEnv ws.Envelope
-	if err := json.Unmarshal(replayedCommand, &replayEnv); err != nil || replayEnv.Type != ws.TypeEnrollStart {
-		t.Fatalf("expected replayed enroll.start, got %s", replayedCommand)
-	}
-	if replayEnv.RequestID != commandEnv.RequestID {
-		t.Fatalf("replayed command request id changed: original=%s replay=%s", commandEnv.RequestID, replayEnv.RequestID)
+	var batchResp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &batchResp)
+	if batchResp["created"].(float64) != 1 || batchResp["deduplicated"].(float64) != 1 {
+		t.Fatalf("expected 1 created + 1 deduplicated, got %v", batchResp)
 	}
 
-	// 5. Test Biometric enrollment trigger on offline device
-	enrollReqOffline := httptest.NewRequest("POST", "/api/v1/devices/dev_9999/enroll-request", bytes.NewReader(enrollBody))
-	enrollReqOffline.Header.Set("Content-Type", "application/json")
-	enrollReqOffline.Header.Set("Authorization", "Bearer "+claimsToken)
-	wOffline := httptest.NewRecorder()
-	r.ServeHTTP(wOffline, enrollReqOffline)
+	// 11. Requests with a wrong device key are rejected.
+	w = jsonRequest(t, r, "GET", devPath+"/commands", "", "wrong-key", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with wrong device key, got %d", w.Code)
+	}
 
-	if wOffline.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422 Unprocessable Entity for offline device, got %d: %s", wOffline.Code, wOffline.Body.String())
+	// 12. Enrollment request against an offline device returns 422.
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/9999/enroll-request", token, "", enrollBody)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for offline device, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestUnregisteredMACHandshake(t *testing.T) {
-	r, _ := setupTestServer(t)
-	srv := httptest.NewServer(r)
-	defer srv.Close()
+func TestHelloValidation(t *testing.T) {
+	r, _, _ := setupTestServer(t)
 
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/device"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("expected WebSocket upgrade to succeed before hello: %v", err)
-	}
-	defer conn.Close()
-
-	hello, _ := ws.MarshalEnvelope(ws.TypeHello, "", "", ws.HelloPayload{
-		MACAddress: "11:22:33:44:55:66", DeviceName: "Unknown", ProtocolVersion: ws.ProtocolVersion,
+	w := jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"device_name": "Missing MAC", "protocol_version": 1,
 	})
-	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
-		t.Fatal(err)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing MAC, got %d: %s", w.Code, w.Body.String())
 	}
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var env ws.Envelope
-	if err := json.Unmarshal(msg, &env); err != nil {
-		t.Fatal(err)
-	}
-	if env.Type != ws.TypeError {
-		t.Fatalf("expected protocol error for unregistered MAC, got %s", msg)
-	}
-}
 
-func TestMissingMACHandshake(t *testing.T) {
-	r, _ := setupTestServer(t)
-	srv := httptest.NewServer(r)
-	defer srv.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/device"
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("expected WebSocket upgrade to succeed before hello: %v", err)
-	}
-	defer conn.Close()
-
-	hello, _ := ws.MarshalEnvelope(ws.TypeHello, "", "", ws.HelloPayload{
-		DeviceName: "Missing MAC", ProtocolVersion: ws.ProtocolVersion,
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "not-a-mac", "device_name": "Bad MAC", "protocol_version": 1,
 	})
-	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
-		t.Fatal(err)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid MAC, got %d: %s", w.Code, w.Body.String())
 	}
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var env ws.Envelope
-	if err := json.Unmarshal(msg, &env); err != nil {
-		t.Fatal(err)
-	}
-	if env.Type != ws.TypeError {
-		t.Fatalf("expected protocol error for missing MAC, got %s", msg)
+
+	w = jsonRequest(t, r, "POST", "/api/v1/devices/hello", "", "", map[string]any{
+		"mac_address": "AA:BB:CC:DD:EE:FF", "device_name": "Bad Version", "protocol_version": 99,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unsupported protocol version, got %d: %s", w.Code, w.Body.String())
 	}
 }
