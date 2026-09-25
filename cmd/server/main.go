@@ -124,11 +124,9 @@ func main() {
 	platform.POST("/organisations/:org_id/toggle-status", a.toggleOrgStatus)
 	platform.POST("/organisations/:org_id/logo", a.uploadOrganizationLogo)
 
-	// Hardware handshake WebSocket endpoints
-	r.GET("/ws/device", a.hub.Gin())
-
+	// Device REST API endpoints (replaces former WebSocket handshake)
 	api := r.Group("/api/v1")
-	api.GET("/devices/ws", a.hub.Gin())
+	api.POST("/devices/hello", a.hub.HelloHandler())
 	api.GET("/events", a.hub.SSEHandler())
 	api.GET("/platform/events", a.hub.SSEHandler())
 	adminAPI := r.Group("/api/v1", a.adminAuth())
@@ -139,6 +137,7 @@ func main() {
 	device.POST("/heartbeat", a.heartbeat)
 	device.GET("/commands", a.commands)
 	device.POST("/commands/:cmdId/ack", a.ackCommand)
+	device.POST("/enroll-result", a.hub.EnrollResultHandler())
 
 	attendance := api.Group("", a.deviceHeaderAuth())
 	attendance.POST("/attendance", a.ingestAttendance)
@@ -747,11 +746,11 @@ func (a *app) orgDeviceList(c *gin.Context) []gin.H {
 		var id int
 		var name, status string
 		rows.Scan(&id, &name, &status)
-		wsOn := online[id]
-		if wsOn {
+		isOnline := online[id]
+		if isOnline {
 			status = "online"
 		}
-		items = append(items, gin.H{"ID": id, "Name": name, "Status": status, "Connected": wsOn})
+		items = append(items, gin.H{"ID": id, "Name": name, "Status": status, "Connected": isOnline})
 	}
 	return items
 }
@@ -777,7 +776,7 @@ func (a *app) devicesPage(c *gin.Context) {
 		if a.hub.Connected(id) {
 			st = "online"
 		}
-		items = append(items, gin.H{"ID": id, "Name": n, "Serial": s, "Status": st, "Heartbeat": h, "Pending": p, "Websocket": a.hub.Connected(id)})
+		items = append(items, gin.H{"ID": id, "Name": n, "Serial": s, "Status": st, "Heartbeat": h, "Pending": p, "Online": a.hub.Connected(id)})
 	}
 	c.HTML(200, "devices.html", gin.H{"Title": "Devices", "Devices": items, "Query": q})
 }
@@ -876,7 +875,7 @@ func (a *app) devicesStatus(c *gin.Context) {
 		var n, s string
 		var h sql.NullString
 		rows.Scan(&id, &n, &s, &h)
-		out = append(out, gin.H{"id": id, "name": n, "status": s, "last_heartbeat": h.String, "websocket": a.hub.Connected(id)})
+		out = append(out, gin.H{"id": id, "name": n, "status": s, "last_heartbeat": h.String, "online": a.hub.Connected(id)})
 	}
 	c.JSON(200, gin.H{"devices": out})
 }

@@ -16,7 +16,7 @@ const (
 	TypeError        = "error"
 )
 
-// Envelope is the JSON shape of every WebSocket frame.
+// Envelope is the standard JSON shape for device API request/response bodies.
 type Envelope struct {
 	Type      string          `json:"type"`
 	RequestID string          `json:"request_id,omitempty"`
@@ -95,8 +95,4 @@ func MarshalEnvelope(typ, requestID, status string, payload any) ([]byte, error)
 		raw = b
 	}
 	return json.Marshal(Envelope{Type: typ, RequestID: requestID, Status: status, Payload: raw})
-}
-
-func marshalEnvelope(typ, requestID string, payload any) ([]byte, error) {
-	return MarshalEnvelope(typ, requestID, "", payload)
 }

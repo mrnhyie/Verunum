@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/gin-gonic/gin"
 	appdb "github.com/sparklabafrica/verunum/internal/db"
 )
 
-func TestDeviceWebSocketEnrollAndAttendance(t *testing.T) {
+func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +29,7 @@ func TestDeviceWebSocketEnrollAndAttendance(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyHash := hashKey("dev-secret")
-	if _, err := database.Exec("INSERT INTO devices(organization_id,name,serial_number,mac_address,api_key_hash) VALUES(1,'Gate','TAB5-1','AA:AA:AA:AA:AA:AA',?)", keyHash); err != nil {
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,serial_number,mac_address,api_key_hash,status,last_heartbeat) VALUES(1,'Gate','TAB5-1','AA:AA:AA:AA:AA:AA',?,'active',?)", keyHash, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -38,84 +39,72 @@ func TestDeviceWebSocketEnrollAndAttendance(t *testing.T) {
 		ingested.event = event
 		return 42, "on_time", nil
 	})
-	srv := httptest.NewServer(http.HandlerFunc(hub.ServeHTTP))
-	defer srv.Close()
 
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "?api_key=dev-secret"
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
-	if err != nil {
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
+
+	// 1. Authenticate via hello
+	helloBody := `{"mac_address":"AA:AA:AA:AA:AA:AA","device_name":"Gate","protocol_version":1,"api_key":"dev-secret"}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var helloResp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &helloResp); err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-
-	hello, _ := marshalEnvelope(TypeHello, "", HelloPayload{MACAddress: "AA:AA:AA:AA:AA:AA", DeviceName: "Gate", ProtocolVersion: ProtocolVersion, APIKey: "dev-secret"})
-	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
-		t.Fatal(err)
-	}
-	_, helloAck, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var env Envelope
-	if err := json.Unmarshal(helloAck, &env); err != nil || env.Type != TypeHelloAck || env.Status != "authenticated" {
-		t.Fatalf("expected hello.ack authenticated, got %s %v", helloAck, err)
+	if helloResp["type"] != TypeHelloAck || helloResp["status"] != "authenticated" {
+		t.Fatalf("expected hello.ack authenticated, got %v", helloResp)
 	}
 
+	// 2. Start enrollment
 	reqID, delivered, err := hub.StartEnrollment(1, 1, 1, "11111111-1111-4111-8111-111111111111")
-	if err != nil || !delivered {
-		t.Fatalf("start enroll: delivered=%v err=%v", delivered, err)
-	}
-	_, enroll, err := conn.ReadMessage()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("start enroll: err=%v", err)
 	}
-	if err := json.Unmarshal(enroll, &env); err != nil || env.Type != TypeEnrollStart {
-		t.Fatalf("expected enroll.start, got %s", enroll)
-	}
-	var start EnrollStartPayload
-	_ = json.Unmarshal(env.Payload, &start)
-	if start.UserID != "11111111-1111-4111-8111-111111111111" {
-		t.Fatalf("user id payload: %+v", start)
-	}
-	if env.RequestID != reqID {
-		t.Fatalf("request id %s != %s", env.RequestID, reqID)
+	// Device has a recent heartbeat, so delivered should be true
+	if !delivered {
+		t.Fatal("expected delivered=true for device with recent heartbeat")
 	}
 
-	result, _ := marshalEnvelope(TypeEnrollResult, reqID, EnrollResultPayload{UserID: start.UserID, Status: "enrolled"})
-	if err := conn.WriteMessage(websocket.TextMessage, result); err != nil {
-		t.Fatal(err)
+	// 3. Verify command is pending in DB
+	var cmdCount int
+	if err := database.QueryRow("SELECT count(*) FROM device_commands WHERE status='pending' AND device_id=1").Scan(&cmdCount); err != nil || cmdCount == 0 {
+		t.Fatalf("expected pending command, got count=%d err=%v", cmdCount, err)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	_ = conn.SetReadDeadline(deadline)
-	_, ack, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
+
+	// 4. Submit enroll result via REST
+	enrollResultBody := `{"user_id":"11111111-1111-4111-8111-111111111111","status":"enrolled","finger_index":1}`
+	enrollReq := httptest.NewRequest("POST", "/api/v1/devices/1/enroll-result?request_id="+reqID, strings.NewReader(enrollResultBody))
+	enrollReq.Header.Set("Content-Type", "application/json")
+
+	// Simulate deviceAuth middleware by setting context values
+	enrollR := gin.New()
+	enrollR.POST("/api/v1/devices/:id/enroll-result", func(c *gin.Context) {
+		c.Set("device_id", 1)
+		c.Set("org_id", 1)
+		hub.EnrollResultHandler()(c)
+	})
+	wEnroll := httptest.NewRecorder()
+	enrollR.ServeHTTP(wEnroll, enrollReq)
+
+	if wEnroll.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", wEnroll.Code, wEnroll.Body.String())
 	}
-	if err := json.Unmarshal(ack, &env); err != nil || env.Type != TypeAck {
-		t.Fatalf("expected ack, got %s", ack)
-	}
+
+	// 5. Verify fingerprint status updated
 	var fp string
 	if err := database.QueryRow("SELECT fingerprint_status FROM users WHERE id=1").Scan(&fp); err != nil || fp != "enrolled" {
 		t.Fatalf("fingerprint status %q err=%v", fp, err)
 	}
-
-	att, _ := marshalEnvelope(TypeAttendance, "att-1", AttendancePayload{EventID: "evt-1", UserID: start.UserID, Event: "clock_in", Method: "fingerprint"})
-	if err := conn.WriteMessage(websocket.TextMessage, att); err != nil {
-		t.Fatal(err)
-	}
-	_, ack, err = conn.ReadMessage()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ingested.user != start.UserID || ingested.event != "clock_in" {
-		t.Fatalf("attendance ingest %+v", ingested)
-	}
-	if err := json.Unmarshal(ack, &env); err != nil || env.Type != TypeAck {
-		t.Fatalf("expected attendance ack, got %s", ack)
-	}
 }
 
 func TestDeviceAutoProvisioning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -132,34 +121,32 @@ func TestDeviceAutoProvisioning(t *testing.T) {
 	sseCh := hub.SubscribeSSE()
 	defer hub.UnsubscribeSSE(sseCh)
 
-	srv := httptest.NewServer(http.HandlerFunc(hub.ServeHTTP))
-	defer srv.Close()
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
 
-	// Initial connection is intentionally unauthenticated; hello carries MAC + name.
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("websocket dial failed: %v, resp status=%v", err, resp.StatusCode)
+	// New device sends hello without API key — should be auto-provisioned
+	helloBody := `{"mac_address":"AA:BB:CC:DD:EE:FF","device_name":"Main Gate","protocol_version":1}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
-	defer conn.Close()
 
-	hello, _ := marshalEnvelope(TypeHello, "", HelloPayload{MACAddress: "AA:BB:CC:DD:EE:FF", DeviceName: "Main Gate", ProtocolVersion: ProtocolVersion})
-	if err := conn.WriteMessage(websocket.TextMessage, hello); err != nil {
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	_, msg, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("read message error: %v", err)
-	}
-	var env Envelope
-	if err := json.Unmarshal(msg, &env); err != nil || env.Type != TypeHelloAck || env.Status != "provisioned" {
-		t.Fatalf("expected hello.ack provisioned, got %s", msg)
+	if resp["type"] != TypeHelloAck || resp["status"] != "provisioned" {
+		t.Fatalf("expected hello.ack provisioned, got %v", resp)
 	}
 
-	var payload HelloAckPayload
-	_ = json.Unmarshal(env.Payload, &payload)
-	if !strings.HasPrefix(payload.APIKey, "dev_sec_") {
-		t.Fatalf("expected dev_sec_ prefix for api key, got %s", payload.APIKey)
+	payload := resp["payload"].(map[string]any)
+	apiKey, ok := payload["api_key"].(string)
+	if !ok || !strings.HasPrefix(apiKey, "dev_sec_") {
+		t.Fatalf("expected dev_sec_ prefix for api key, got %v", payload["api_key"])
 	}
 
 	// Verify SSE broadcast was received
@@ -189,7 +176,8 @@ func TestDeviceAutoProvisioning(t *testing.T) {
 	}
 }
 
-func TestDeviceMustSendHelloFirst(t *testing.T) {
+func TestDeviceMustProvideValidMAC(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -198,31 +186,83 @@ func TestDeviceMustSendHelloFirst(t *testing.T) {
 	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash) VALUES(1,'Gate','AA:AA:AA:AA:AA:AA',?)", hashKey("secret")); err != nil {
-		t.Fatal(err)
-	}
+
 	hub := NewHub(database, nil)
-	srv := httptest.NewServer(http.HandlerFunc(hub.ServeHTTP))
-	defer srv.Close()
-	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "?api_key=secret"
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
+
+	// Missing MAC address
+	helloBody := `{"device_name":"Missing MAC","protocol_version":1}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUnregisteredMACHello(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
-	bad, _ := marshalEnvelope(TypePing, "1", nil)
-	if err := conn.WriteMessage(websocket.TextMessage, bad); err != nil {
+	defer database.Close()
+	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
-	_, msg, err := conn.ReadMessage()
+
+	hub := NewHub(database, nil)
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
+
+	// Unregistered MAC without API key
+	helloBody := `{"mac_address":"11:22:33:44:55:66","device_name":"Unknown","protocol_version":1}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(helloBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHeartbeatBasedConnectivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database, err := appdb.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var env Envelope
-	if err := json.Unmarshal(msg, &env); err != nil {
+	defer database.Close()
+	if _, err := database.Exec("INSERT INTO organizations(name,type) VALUES('Acme','school')"); err != nil {
 		t.Fatal(err)
 	}
-	if env.Type != TypeError {
-		t.Fatalf("expected error, got %s", msg)
+
+	hub := NewHub(database, nil)
+
+	// Device with recent heartbeat
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, _ = database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status,last_heartbeat) VALUES(1,'Gate','AA:AA:AA:AA:AA:AA','hash','active',?)", now)
+	if !hub.Connected(1) {
+		t.Fatal("expected device 1 to be connected")
+	}
+
+	// Device with old heartbeat
+	old := time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339)
+	_, _ = database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status,last_heartbeat) VALUES(1,'Gate2','BB:BB:BB:BB:BB:BB','hash','active',?)", old)
+	if hub.Connected(2) {
+		t.Fatal("expected device 2 to be disconnected")
+	}
+
+	// ConnectedIDs
+	ids := hub.ConnectedIDs(1)
+	if !ids[1] {
+		t.Fatal("expected device 1 in connected IDs")
+	}
+	if ids[2] {
+		t.Fatal("expected device 2 not in connected IDs")
 	}
 }
