@@ -73,7 +73,10 @@ func main() {
 	r.GET("/login", func(c *gin.Context) { c.HTML(200, "login.html", gin.H{"Error": ""}) })
 	r.POST("/auth/login", a.login)
 	r.POST("/auth/refresh", a.refresh)
-	r.POST("/auth/logout", func(c *gin.Context) { c.SetCookie("verunum_token", "", -1, "/", "", false, true); c.Redirect(http.StatusFound, "/login") })
+	r.POST("/auth/logout", func(c *gin.Context) {
+		c.SetCookie("verunum_token", "", -1, "/", "", false, true)
+		c.Redirect(http.StatusFound, "/login")
+	})
 
 	admin := r.Group("", a.adminAuth())
 	admin.GET("/dashboard", a.dashboard)
@@ -141,11 +144,11 @@ func main() {
 	device.POST("/attendance", a.ingestAttendance)
 	device.POST("/attendance/batch", a.ingestBatch)
 
-	// FIXED: Replaced *addr with explicit string to prevent compile error
-	log.Printf("Verunum running on 0.0.0.0:8080")
+	addr := env("VERUNUM_ADDR", "0.0.0.0:8080")
+	log.Printf("Verunum running on %s", addr)
 
-	// Exposes port 8080 directly to any network interface
-	log.Fatal(r.Run("0.0.0.0:8080"))
+	// Exposes the listen address directly to any network interface
+	log.Fatal(r.Run(addr))
 }
 
 func env(k, d string) string {
@@ -409,7 +412,7 @@ func (a *app) superAdmin() gin.HandlerFunc {
 		c.Next()
 	}
 }
-func (a *app) org(c *gin.Context) int      { return c.MustGet("claims").(claims).OrgID }
+func (a *app) org(c *gin.Context) int { return c.MustGet("claims").(claims).OrgID }
 func deviceID(c *gin.Context) (int, error) {
 	return strconv.Atoi(strings.TrimPrefix(c.Param("id"), "dev_"))
 }
@@ -632,6 +635,104 @@ func (a *app) eventStatus(org int, event string, t time.Time) string {
 	}
 	return "on_time"
 }
+
+// platformGrowth builds the super-admin growth block: a day-by-day clock-in
+// matrix across the last six calendar months, plus 30-day adoption figures.
+// Dates are bucketed in UTC so they line up with the stored 'Z' timestamps.
+func (a *app) platformGrowth() ([]gin.H, []gin.H, []gin.H) {
+	now := time.Now().UTC()
+	today := now.Format("2006-01-02")
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -5, 0)
+
+	counts := map[string]int{}
+	if rows, err := a.db.Query("SELECT coalesce(date(timestamp),'') d, count(*) FROM attendance_events GROUP BY d"); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var d string
+			var n int
+			rows.Scan(&d, &n)
+			counts[d] = n
+		}
+	}
+
+	// Pass 1 — collect the window so tiers can be scaled against its peak day.
+	type dayRec struct {
+		key   string
+		count int
+	}
+	window := make([][]dayRec, 0, 6)
+	peak := 0
+	for i := 0; i < 6; i++ {
+		month := first.AddDate(0, i, 0)
+		dim := time.Date(month.Year(), month.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+		recs := make([]dayRec, dim)
+		for d := 1; d <= dim; d++ {
+			key := time.Date(month.Year(), month.Month(), d, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+			recs[d-1] = dayRec{key: key, count: counts[key]}
+			if counts[key] > peak {
+				peak = counts[key]
+			}
+		}
+		window = append(window, recs)
+	}
+
+	months := make([]gin.H, 0, 6)
+	for i, recs := range window {
+		cells := make([]gin.H, 0, 31)
+		for d := 1; d <= 31; d++ {
+			if d > len(recs) {
+				cells = append(cells, gin.H{"Tier": -1, "Title": ""})
+				continue
+			}
+			r := recs[d-1]
+			tier := 0
+			if r.count > 0 && peak > 0 {
+				switch p := r.count * 100 / peak; {
+				case p > 75:
+					tier = 4
+				case p > 50:
+					tier = 3
+				case p > 25:
+					tier = 2
+				default:
+					tier = 1
+				}
+			}
+			if r.key > today {
+				tier = -1
+			}
+			title := r.key + " · " + strconv.Itoa(r.count) + " scans"
+			if tier < 0 {
+				title = ""
+			}
+			cells = append(cells, gin.H{"Tier": tier, "Title": title})
+		}
+		months = append(months, gin.H{"Label": first.AddDate(0, i, 0).Format("Jan"), "Year": first.AddDate(0, i, 0).Format("2006"), "Cells": cells})
+	}
+
+	cutoff := now.AddDate(0, 0, -30).Format("2006-01-02")
+	figures := make([]gin.H, 0, 3)
+	for _, f := range []struct{ Label, Table, Col, Accent string }{
+		{"Organisations", "organizations", "created_at", "olive"},
+		{"Terminals", "devices", "created_at", "teal"},
+		{"Clock-ins", "attendance_events", "timestamp", "rust"},
+	} {
+		var total, recent int
+		a.db.QueryRow("SELECT count(*), coalesce(sum(CASE WHEN date("+f.Col+") >= date(?) THEN 1 ELSE 0 END),0) FROM "+f.Table, cutoff).Scan(&total, &recent)
+		share := 0
+		if total > 0 {
+			share = recent * 100 / total
+		}
+		figures = append(figures, gin.H{"Label": f.Label, "Total": total, "Recent": recent, "Share": share, "Accent": f.Accent})
+	}
+
+	axis := []gin.H{}
+	for _, d := range []int{1, 8, 15, 22, 29} {
+		axis = append(axis, gin.H{"Col": d, "Label": strconv.Itoa(d)})
+	}
+	return months, figures, axis
+}
+
 func (a *app) dashboard(c *gin.Context) {
 	claim := c.MustGet("claims").(claims)
 	if claim.Role == "super_admin" {
@@ -639,16 +740,18 @@ func (a *app) dashboard(c *gin.Context) {
 		a.db.QueryRow("SELECT count(*) FROM organizations").Scan(&organizations)
 		a.db.QueryRow("SELECT count(*) FROM devices").Scan(&devices)
 		a.db.QueryRow("SELECT count(*) FROM users WHERE must_change_password=1").Scan(&pending)
-		rows, _ := a.db.Query("SELECT o.name,o.type,coalesce((SELECT full_name FROM users u WHERE u.organization_id=o.id AND u.role='org_admin' ORDER BY id LIMIT 1),'Not assigned'),(SELECT count(*) FROM devices d WHERE d.organization_id=o.id) FROM organizations o ORDER BY o.id DESC LIMIT 10")
+		rows, _ := a.db.Query("SELECT o.id,o.name,o.type,coalesce((SELECT full_name FROM users u WHERE u.organization_id=o.id AND u.role='org_admin' ORDER BY id LIMIT 1),'Not assigned'),(SELECT count(*) FROM devices d WHERE d.organization_id=o.id) FROM organizations o ORDER BY o.id DESC LIMIT 10")
 		defer rows.Close()
 		organizationsList := []gin.H{}
 		for rows.Next() {
+			var id int
 			var name, typ, admin string
 			var count int
-			rows.Scan(&name, &typ, &admin, &count)
-			organizationsList = append(organizationsList, gin.H{"Name": name, "Type": typ, "Admin": admin, "Devices": count})
+			rows.Scan(&id, &name, &typ, &admin, &count)
+			organizationsList = append(organizationsList, gin.H{"ID": id, "Name": name, "Type": typ, "Admin": admin, "Devices": count})
 		}
-		c.HTML(200, "dashboard.html", gin.H{"Title": "Platform dashboard", "IsStaff": true, "Organizations": organizations, "Devices": devices, "Pending": pending, "OrganizationList": organizationsList})
+		growthMonths, growthFigures, growthAxis := a.platformGrowth()
+		c.HTML(200, "dashboard.html", gin.H{"Title": "Platform dashboard", "IsStaff": true, "Organizations": organizations, "Devices": devices, "Pending": pending, "OrganizationList": organizationsList, "GrowthMonths": growthMonths, "GrowthFigures": growthFigures, "GrowthAxis": growthAxis})
 		return
 	}
 	org := a.org(c)
@@ -787,6 +890,25 @@ func (a *app) newCardPage(c *gin.Context) {
 	}
 	c.HTML(200, "card_form.html", gin.H{"Title": "Issue RFID card", "Users": users})
 }
+
+// calendarDay is one cell of the attendance week strip. Level is the day's
+// distinct-scan count as a percentage of the busiest day in the window.
+type calendarDay struct {
+	Date        string
+	Label       string
+	Weekday     string
+	WeekdayLong string
+	Month       string
+	Day         int
+	Count       int
+	Level       int
+	Tint        int
+	HasScans    bool
+	Today       bool
+	Selected    bool
+	ShowMonth   bool
+}
+
 func (a *app) attendancePage(c *gin.Context) {
 	org := a.org(c)
 	selected := c.Query("date")
@@ -825,19 +947,69 @@ func (a *app) attendancePage(c *gin.Context) {
 		absentRows.Scan(&id, &name, &email)
 		absent = append(absent, gin.H{"ID": id, "Name": name, "Email": email})
 	}
+	eventCount := len(items)
 	base, _ := time.Parse("2006-01-02", selected)
-	days := []gin.H{}
+	today := time.Now().Format("2006-01-02")
+	days := make([]calendarDay, 0, 7)
+	maxCount := 0
 	for i := -3; i <= 3; i++ {
 		d := base.AddDate(0, 0, i)
+		key := d.Format("2006-01-02")
 		var count int
-		_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, d.Format("2006-01-02")+"%").Scan(&count)
-		days = append(days, gin.H{"Date": d.Format("2006-01-02"), "Label": d.Format("Mon, 02 Jan"), "Count": count, "Selected": d.Format("2006-01-02") == selected})
+		_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, key+"%").Scan(&count)
+		if count > maxCount {
+			maxCount = count
+		}
+		days = append(days, calendarDay{
+			Date:        key,
+			Label:       d.Format("Mon, 02 Jan"),
+			Weekday:     d.Format("Mon"),
+			WeekdayLong: d.Format("Monday"),
+			Month:       d.Format("Jan"),
+			Day:         d.Day(),
+			Count:       count,
+			Tint:        int(d.Weekday()),
+			HasScans:    count > 0,
+			Today:       key == today,
+			Selected:    key == selected,
+		})
 	}
+	activeDays, presentCount := 0, 0
+	for i := range days {
+		if days[i].Count > 0 {
+			activeDays++
+		}
+		if maxCount > 0 {
+			days[i].Level = days[i].Count * 100 / maxCount
+		}
+		if i == 0 || days[i].Month != days[i-1].Month {
+			days[i].ShowMonth = true
+		}
+		if days[i].Selected {
+			presentCount = days[i].Count
+		}
+	}
+	monthLabel := base.AddDate(0, 0, -3).Format("January 2006")
+	if first, last := base.AddDate(0, 0, -3), base.AddDate(0, 0, 3); first.Year() != last.Year() {
+		monthLabel = first.Format("January 2006") + " – " + last.Format("January 2006")
+	} else if first.Month() != last.Month() {
+		monthLabel = first.Format("January") + " – " + last.Format("January 2006")
+	}
+	var lateCount int
+	_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ? AND attendance_status='late'", org, selected+"%").Scan(&lateCount)
 	view := c.Query("view")
 	if view == "absent" {
 		items = []gin.H{}
 	}
-	c.HTML(200, "attendance.html", gin.H{"Title": "Attendance", "Events": items, "Absent": absent, "AbsentCount": len(absent), "Days": days, "SelectedDate": selected, "View": view, "Query": c.Query("q")})
+	c.HTML(200, "attendance.html", gin.H{
+		"Title": "Attendance", "Events": items, "EventCount": eventCount,
+		"Absent": absent, "AbsentCount": len(absent),
+		"PresentCount": presentCount, "LateCount": lateCount, "ActiveDays": activeDays,
+		"Days": days, "SelectedDate": selected, "MonthLabel": monthLabel,
+		"PrevDate": base.AddDate(0, 0, -7).Format("2006-01-02"),
+		"NextDate": base.AddDate(0, 0, 7).Format("2006-01-02"),
+		"View":     view, "Query": c.Query("q"),
+	})
 }
 func (a *app) devicesStatus(c *gin.Context) {
 	rows, _ := a.db.Query("SELECT id,name,status,last_heartbeat FROM devices WHERE organization_id=?", a.org(c))

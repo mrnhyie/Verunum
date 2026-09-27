@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Organisation provisioned · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <link rel="stylesheet" href="/static/app.css?v=20260927">
 </head>
 <body class="app-shell">
   <header class="topbar">
     <a class="brand" href="/dashboard">
-      <span class="brand-mark">V</span>
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
       <span>verunum</span>
     </a>
     <span class="breadcrumb">/ Platform / Provisioned</span>
@@ -32,7 +32,7 @@
     <a class="rail-link" href="/admin/organizations/new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New Organisation</a>
   </aside>
 
-  <main class="form-main" style="padding-top: 40px;">
+  <main class="form-main" style="padding-top: 40px">
     <div class="success-card mono-card">
       <div class="success-icon">✓</div>
       <h1>Customer account is ready.</h1>
@@ -53,7 +53,7 @@
         </dd>
       </dl>
       
-      <div class="form-actions" style="margin-top: 32px; gap: 16px;">
+      <div class="form-actions" style="margin-top: 32px; gap: 16px">
         <a href="/admin/organizations" class="btn-pill btn-pill-secondary">Done</a>
         <a class="primary-action" href="/admin/organizations/{{.OrganizationID}}/devices/new">Provision device</a>
       </div>

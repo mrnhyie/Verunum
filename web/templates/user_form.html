@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}} · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <link rel="stylesheet" href="/static/app.css?v=20260927">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
     <a class="brand" href="/dashboard">
-      <span class="brand-mark">V</span>
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
       <span>verunum</span>
     </a>
     <span class="breadcrumb">/ People / {{if .Person}}Fingerprint{{else}}Add person{{end}}</span>
@@ -31,36 +31,36 @@
   </aside>
 
   <main class="form-main enroll-page">
-    <a class="back-link" href="/users" style="color:#71717a; display:inline-flex; align-items:center; gap:6px; margin-bottom:24px;">
-      <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    <a class="back-link" href="/users" style="color:var(--muted); display:inline-flex; align-items:center; gap:6px; margin-bottom:24px">
+      <svg viewBox="0 0 24 24" style="width:16px; height:16px"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       Back to people
     </a>
 
     <div class="form-heading">
-      <p class="eyebrow" style="color:#71717a;">Management</p>
-      <h1 style="color:#09090b; font-weight:800;">{{if .Person}}Enroll fingerprint{{else}}Add a person{{end}}</h1>
-      <p class="subtle" style="color:#71717a;">{{if .Person}}Send this person to a live terminal to capture their fingerprint. Templates stay on the device.{{else}}Enter their details, then send an enrollment request to a connected terminal.{{end}}</p>
+      <p class="eyebrow">Management</p>
+      <h1>{{if .Person}}Enroll fingerprint{{else}}Add a person{{end}}</h1>
+      <p class="subtle" style="color:var(--muted)">{{if .Person}}Send this person to a live terminal to capture their fingerprint. Templates stay on the device.{{else}}Enter their details, then send an enrollment request to a connected terminal.{{end}}</p>
     </div>
 
-    <form id="profileForm" class="mono-card" method="post" action="/users" style="margin-bottom: 24px;">
-      <div class="form-section" style="padding: 28px;">
-        <h2 style="font-size: 16px; font-weight: 700; color: #09090b; margin-bottom: 20px;">1. Profile details</h2>
-        <div class="form-grid" style="gap: 18px;">
-          <label class="full" style="color:#09090b; font-weight:600;">
+    <form id="profileForm" class="mono-card" method="post" action="/users" style="margin-bottom: 24px">
+      <div class="form-section" style="padding: 28px">
+        <h2 style="margin-bottom: 20px">1. Profile details</h2>
+        <div class="form-grid" style="gap: 18px">
+          <label class="full" style="color:var(--ink); font-weight:600">
             Full name
-            <input name="full_name" id="fullName" required placeholder="e.g. Ama Mensah" value="{{if .Person}}{{.Person.Name}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            <input name="full_name" id="fullName" required placeholder="e.g. Ama Mensah" value="{{if .Person}}{{.Person.Name}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:var(--border-light)">
           </label>
-          <label style="color:#09090b; font-weight:600;">
+          <label style="color:var(--ink); font-weight:600">
             Email address
-            <input name="email" id="email" type="email" placeholder="ama@example.com" value="{{if .Person}}{{.Person.Email}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            <input name="email" id="email" type="email" placeholder="ama@example.com" value="{{if .Person}}{{.Person.Email}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:var(--border-light)">
           </label>
-          <label style="color:#09090b; font-weight:600;">
+          <label style="color:var(--ink); font-weight:600">
             Phone number
-            <input name="phone" id="phone" type="tel" placeholder="+233..." value="{{if .Person}}{{.Person.Phone}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            <input name="phone" id="phone" type="tel" placeholder="+233..." value="{{if .Person}}{{.Person.Phone}}{{end}}" {{if .Person}}readonly{{end}} style="border-radius:10px; border-color:var(--border-light)">
           </label>
-          <label class="full" style="color:#09090b; font-weight:600;">
+          <label class="full" style="color:var(--ink); font-weight:600">
             Role
-            <select name="role" id="role" {{if .Person}}disabled{{end}} style="border-radius:10px; border-color:#e4e4e7; background:#fff; color:#09090b;">
+            <select name="role" id="role" {{if .Person}}disabled{{end}} style="border-radius:10px; border-color:var(--border-light)">
               <option value="viewer">Viewer</option>
               <option value="teacher">Teacher</option>
               <option value="hr_admin">HR admin</option>
@@ -71,7 +71,7 @@
         </div>
       </div>
       {{if not .Person}}
-      <div style="display:flex; justify-content:flex-end; gap:14px; padding:18px 28px; border-top:1px solid #e4e4e7;">
+      <div class="form-actions">
         <a href="/users" class="btn-pill btn-pill-secondary">Cancel</a>
         <button type="submit" id="savePerson" class="btn-pill btn-pill-primary">Save and continue</button>
       </div>
@@ -79,18 +79,18 @@
     </form>
 
     <section id="enrollPanel" class="mono-card" {{if not .Person}}style="display:none;"{{end}}>
-      <div class="form-section" style="padding: 28px;">
-        <h2 style="font-size: 16px; font-weight: 700; color: #09090b; margin-bottom: 6px;">2. Add fingerprint</h2>
-        <p class="subtle" style="margin-bottom: 20px; color:#71717a;">The platform sends only this person's UUID to the terminal. Biometric templates remain securely stored on hardware.</p>
+      <div class="form-section" style="padding: 28px">
+        <h2 style="margin-bottom: 6px">2. Add fingerprint</h2>
+        <p class="subtle" style="margin-bottom: 20px; color:var(--muted)">The platform sends only this person's UUID to the terminal. Biometric templates remain securely stored on hardware.</p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; padding: 16px 20px; background: #f8f9fa; border: 1px solid #e4e4e7; border-radius: 12px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px">
           <div>
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #71717a;">Person UUID</div>
-            <div id="personUUID" class="mono" style="font-size: 13px; font-weight: 600; color: #09090b; margin-top: 4px;">{{if .Person}}{{.Person.UUID}}{{else}}—{{end}}</div>
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted)">Person UUID</div>
+            <div id="personUUID" class="mono" style="font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 4px">{{if .Person}}{{.Person.UUID}}{{else}}—{{end}}</div>
           </div>
           <div>
-            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #71717a;">Biometric Status</div>
-            <div id="fpStatus" style="margin-top: 4px;">
+            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted)">Biometric Status</div>
+            <div id="fpStatus" style="margin-top: 4px">
               <span class="badge-pill {{if .Person}}{{if eq .Person.Fingerprint "enrolled"}}active{{else}}offline{{end}}{{else}}offline{{end}}">
                 {{if .Person}}{{.Person.Fingerprint}}{{else}}not_enrolled{{end}}
               </span>
@@ -129,11 +129,11 @@
           </label>
         </div>
 
-        <div id="enrollNote" class="alert-banner" style="margin-top: 20px; background: #f4f4f5; color: #52525b; border: 1px solid #e4e4e7;">
+        <div id="enrollNote" class="alert-banner" style="margin-top: 20px">
           Choose a live terminal, then start enrollment. Ask the person to place their finger on the sensor when device prompts.
         </div>
       </div>
-      <div style="display:flex; justify-content:flex-end; padding:18px 28px; border-top:1px solid #e4e4e7;">
+      <div class="form-actions">
         <a href="/users" class="btn-pill btn-pill-primary">Done</a>
       </div>
     </section>
@@ -197,9 +197,7 @@
       }
       fpEl.innerHTML = '<span class="badge-pill warning">pending</span>';
       note.className = 'alert-banner';
-      note.style.background = '#fffbeb';
-      note.style.color = '#92400e';
-      note.style.borderColor = '#fde68a';
+      note.classList.add('warning');
       note.textContent = 'Enrollment command sent to terminal. Wait for the person to scan their finger on the sensor.';
       initSSE();
     });
@@ -210,7 +208,7 @@
         try {
           const data = JSON.parse(e.data);
           if (data.user_id === personUuid || data.user_id === String(personId)) {
-            fpEl.innerHTML = '<span class="badge-pill active"><svg viewBox="0 0 24 24" style="width:12px;height:12px;color:#047857;"><path d="M20 6L9 17l-5-5"/></svg> enrolled</span>';
+            fpEl.innerHTML = '<span class="badge-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> enrolled</span>';
             note.className = 'alert-banner success';
             note.textContent = 'Fingerprint enrolled successfully on the physical device!';
             source.close();

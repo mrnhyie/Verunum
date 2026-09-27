@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Customer Organisations · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <link rel="stylesheet" href="/static/app.css?v=20260927">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
     <a class="brand" href="/platform/organisations">
-      <span class="brand-mark">V</span>
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
       <span>verunum</span>
     </a>
     <span class="breadcrumb">/ Platform / Customer Organisations</span>
@@ -54,86 +54,86 @@
   <main class="dashboard-main">
     <div class="page-heading">
       <div>
-        <p class="eyebrow" style="color: #71717a;">Platform staff</p>
-        <h1 style="color: #09090b; font-weight: 800;">Customer organisations</h1>
-        <p class="subtle" style="color: #71717a;">Monitor workspaces, provision hardware, and inspect live attendance metrics.</p>
+        <p class="eyebrow">Platform staff</p>
+        <h1>Customer organisations</h1>
+        <p class="subtle" style="color: var(--muted)">Monitor workspaces, provision hardware, and inspect live attendance metrics.</p>
       </div>
-      <div style="display: flex; gap: 12px;">
+      <div style="display: flex; gap: 12px">
         <a class="btn-pill btn-pill-secondary" href="/platform/device-provisioning">
-          <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+          <svg viewBox="0 0 24 24" style="width:16px; height:16px"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
           Provision Device
         </a>
         <a class="btn-pill btn-pill-primary" href="/admin/organizations/new">
-          <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg viewBox="0 0 24 24" style="width:16px; height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           New Organisation
         </a>
       </div>
     </div>
 
     <section class="mono-card">
-      <div style="padding: 18px 24px; border-bottom: 1px solid #e4e4e7; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <strong style="color: #09090b; font-size: 15px;">All Customer Workspaces</strong>
+      <div class="panel-heading">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <strong style="color: var(--ink); font-size: 15px">All Customer Workspaces</strong>
           <span class="badge-pill">{{len .Organizations}}</span>
         </div>
         <form class="section-search" method="get" >
-          <svg viewBox="0 0 24 24" style="color:#71717a;"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-          <input name="q" value="{{.Query}}" placeholder="Search organisations..." style="color:#09090b;">
-          <button class="btn-pill btn-pill-primary" style="padding: 4px 12px; font-size: 11px;">Search</button>
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+          <input name="q" value="{{.Query}}" placeholder="Search organisations...">
+          <button class="btn-pill btn-pill-primary" style="padding: 4px 12px; font-size: 11px">Search</button>
         </form>
       </div>
 
       <div class="table-wrap">
-        <table class="data-table" style="background: #ffffff;">
+        <table class="data-table">
           <thead>
             <tr>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7;">Organisation</th>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7;">Type</th>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7;">Initial Admin</th>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7;">Hardware</th>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7;">Status</th>
-              <th style="background: #fcfcfd; color: #71717a; border-bottom: 1px solid #e4e4e7; text-align: right;">Actions</th>
+              <th>Organisation</th>
+              <th>Type</th>
+              <th>Initial Admin</th>
+              <th>Hardware</th>
+              <th>Status</th>
+              <th style="text-align: right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {{range .Organizations}}
-            <tr style="cursor: pointer;" onclick="if (!event.target.closest('a, button, form')) window.location.href='/platform/organisations/{{.ID}}';">
-              <td style="border-bottom: 1px solid #e4e4e7;">
-                <a href="/platform/organisations/{{.ID}}" style="color: #09090b; text-decoration: none; font-weight: 700; font-size: 14px;">
+            <tr style="cursor: pointer" onclick="if (!event.target.closest('a, button, form')) window.location.href='/platform/organisations/{{.ID}}';">
+              <td>
+                <a href="/platform/organisations/{{.ID}}" style="color: var(--ink); text-decoration: none; font-weight: 700; font-size: 14px">
                   {{.Name}}
                 </a>
               </td>
-              <td style="border-bottom: 1px solid #e4e4e7;">
+              <td>
                 <span class="badge-pill">{{.Type}}</span>
               </td>
-              <td style="border-bottom: 1px solid #e4e4e7; color: #52525b;">
+              <td>
                 {{if .Admin}}{{.Admin}}{{else}}<span class="subtle">Not assigned</span>{{end}}
               </td>
-              <td style="border-bottom: 1px solid #e4e4e7;">
-                <span class="badge-pill" style="background: #f4f4f5; color: #09090b;">
+              <td>
+                <span class="badge-pill">
                   {{.Devices}} devices
                 </span>
               </td>
-              <td style="border-bottom: 1px solid #e4e4e7;">
+              <td>
                 <span class="badge-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
                   <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
                   {{.Status}}
                 </span>
               </td>
-              <td class="row-actions" style="border-bottom: 1px solid #e4e4e7; justify-content: flex-end;">
-                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px;" href="/platform/organisations/{{.ID}}">Manage Profile</a>
-                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px;" href="/platform/device-provisioning?org_id={{.ID}}">Device</a>
-                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px;" href="/admin/organizations/{{.ID}}/edit">Edit</a>
+              <td class="row-actions" style="justify-content: flex-end">
+                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px" href="/platform/organisations/{{.ID}}">Manage Profile</a>
+                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px" href="/platform/device-provisioning?org_id={{.ID}}">Device</a>
+                <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px" href="/admin/organizations/{{.ID}}/edit">Edit</a>
                 {{if eq .Status "active"}}
-                <form method="post" action="/admin/organizations/{{.ID}}/delete" style="margin: 0;">
-                  <button class="btn-pill btn-pill-danger" style="padding: 5px 12px; font-size: 11px;" onclick="return confirm('Deactivate this organisation?')">Deactivate</button>
+                <form method="post" action="/admin/organizations/{{.ID}}/delete" style="margin: 0">
+                  <button class="btn-pill btn-pill-danger" style="padding: 5px 12px; font-size: 11px" onclick="return confirm('Deactivate this organisation?')">Deactivate</button>
                 </form>
                 {{end}}
               </td>
             </tr>
             {{else}}
             <tr>
-              <td colspan="6" class="table-empty" style="padding: 60px 20px; color: #71717a;">
+              <td colspan="6" class="table-empty">
                 No customer organisations provisioned yet.
               </td>
             </tr>

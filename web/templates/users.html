@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>People & Staff · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <link rel="stylesheet" href="/static/app.css?v=20260927">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
     <a class="brand" href="/dashboard">
-      <span class="brand-mark">V</span>
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
       <span>verunum</span>
     </a>
     <span class="breadcrumb">/ Management / People</span>
@@ -23,42 +23,42 @@
     </div>
   </header>
 
-  <aside class="sidebar" style="background:#ffffff; border-right:1px solid #e4e4e7;">
-    <p class="rail-label" style="color:#71717a;">Workspace</p>
-    <a class="rail-link" href="/dashboard" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg> Dashboard</a>
-    <p class="rail-label" style="color:#71717a;">Management</p>
-    <a class="rail-link active" href="/users" style="background:#09090b; color:#ffffff;"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14c2.3.7 4 2.9 4 5.5"/></svg> People</a>
-    <a class="rail-link" href="/devices" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
-    <a class="rail-link" href="/rfid-cards" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
-    <p class="rail-label" style="color:#71717a;">Operations</p>
-    <a class="rail-link" href="/attendance" style="color:#3f3f46;"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
+  <aside class="sidebar">
+    <p class="rail-label">Workspace</p>
+    <a class="rail-link" href="/dashboard"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg> Dashboard</a>
+    <p class="rail-label">Management</p>
+    <a class="rail-link active" href="/users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14c2.3.7 4 2.9 4 5.5"/></svg> People</a>
+    <a class="rail-link" href="/devices"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
+    <a class="rail-link" href="/rfid-cards"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
+    <p class="rail-label">Operations</p>
+    <a class="rail-link" href="/attendance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
   </aside>
 
   <main class="dashboard-main list-page">
     <div class="page-heading">
       <div>
-        <p class="eyebrow" style="color:#71717a;">Management</p>
-        <h1 style="color:#09090b; font-weight:800;">People & Staff</h1>
-        <p class="subtle" style="color:#71717a;">Manage profiles, roles, and biometric credentials in your organisation.</p>
+        <p class="eyebrow">Management</p>
+        <h1>People & Staff</h1>
+        <p class="subtle" style="color:var(--muted)">Manage profiles, roles, and biometric credentials in your organisation.</p>
       </div>
       <a class="btn-pill btn-pill-primary" href="/users/new">
-        <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <svg viewBox="0 0 24 24" style="width:16px; height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add person
       </a>
     </div>
 
     <section class="mono-card">
-      <div style="padding:18px 24px; border-bottom:1px solid #e4e4e7; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <strong style="color:#09090b; font-size:15px;">All Members</strong>
+      <div class="panel-heading">
+        <div style="display:flex; align-items:center; gap:8px">
+          <strong style="color:var(--ink); font-size:15px">All Members</strong>
           <span class="badge-pill">{{len .Users}}</span>
         </div>
         <div class="people-filters">
           <form class="section-search" onsubmit="return false" >
-            <svg viewBox="0 0 24 24" style="color:#71717a;"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-            <input id="peopleSearch" value="{{.Query}}" placeholder="Search by name or email..." style="color:#09090b;">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+            <input id="peopleSearch" value="{{.Query}}" placeholder="Search by name or email...">
           </form>
-          <select id="roleFilter" style="background:#fff; border-color:#e4e4e7; color:#09090b; border-radius:9999px; padding:6px 14px;">
+          <select id="roleFilter" style="border-color:var(--border-light); border-radius:9999px; padding:6px 14px">
             <option value="">All roles</option>
             <option>teacher</option>
             <option>hr_admin</option>
@@ -66,7 +66,7 @@
             <option>org_admin</option>
             <option>viewer</option>
           </select>
-          <select id="statusFilter" style="background:#fff; border-color:#e4e4e7; color:#09090b; border-radius:9999px; padding:6px 14px;">
+          <select id="statusFilter" style="border-color:var(--border-light); border-radius:9999px; padding:6px 14px">
             <option value="">All statuses</option>
             <option>active</option>
             <option>inactive</option>
@@ -75,61 +75,61 @@
       </div>
 
       <div class="table-wrap">
-        <table class="data-table" id="peopleTable" style="background:#ffffff;">
+        <table class="data-table" id="peopleTable">
           <thead>
             <tr>
-              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Person</th>
-              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Role</th>
-              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Fingerprint</th>
-              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7;">Status</th>
-              <th style="background:#fcfcfd; color:#71717a; border-bottom:1px solid #e4e4e7; text-align:right;">Actions</th>
+              <th>Person</th>
+              <th>Role</th>
+              <th>Fingerprint</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {{range .Users}}
             <tr data-search="{{.Name}} {{.Email}} {{.Role}} {{.Status}}" data-role="{{.Role}}" data-status="{{.Status}}">
-              <td style="border-bottom:1px solid #e4e4e7;">
+              <td>
                 <div class="person-cell">
-                  <div style="width:34px; height:34px; border-radius:50%; background:#f4f4f5; border:1px solid #e4e4e7; display:grid; place-items:center; font-weight:700; color:#09090b;">
+                  <div style="width:34px; height:34px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:grid; place-items:center; font-weight:700; color:var(--ink)">
                     {{printf "%.1s" .Name}}
                   </div>
                   <div>
-                    <strong style="color:#09090b;">{{.Name}}</strong>
-                    <small style="color:#71717a;">{{.Email}}</small>
+                    <strong style="color:var(--ink)">{{.Name}}</strong>
+                    <small style="color:var(--muted)">{{.Email}}</small>
                   </div>
                 </div>
               </td>
-              <td style="border-bottom:1px solid #e4e4e7;">
-                <span class="badge-pill" style="font-size:10px;">{{.Role}}</span>
+              <td>
+                <span class="badge-pill" style="font-size:10px">{{.Role}}</span>
               </td>
-              <td style="border-bottom:1px solid #e4e4e7;">
+              <td>
                 <span class="badge-pill {{if eq .Fingerprint "enrolled"}}active{{else}}offline{{end}}">
                   {{if eq .Fingerprint "enrolled"}}
-                  <svg viewBox="0 0 24 24" style="width:12px;height:12px;color:#047857;"><path d="M20 6L9 17l-5-5"/></svg>
+                  <svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg>
                   Enrolled
                   {{else}}
                   Not enrolled
                   {{end}}
                 </span>
               </td>
-              <td style="border-bottom:1px solid #e4e4e7;">
+              <td>
                 <span class="badge-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
                   <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
                   {{.Status}}
                 </span>
               </td>
-              <td class="row-actions" style="border-bottom:1px solid #e4e4e7; justify-content:flex-end;">
-                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px;" href="/users/{{.ID}}">Enroll</a>
-                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px;" href="/attendance?user_id={{.ID}}">Logs</a>
-                <button type="button" class="btn-pill btn-pill-secondary edit-person" style="padding:4px 12px; font-size:11px;" data-id="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-phone="{{.Phone}}" data-role="{{.Role}}" data-status="{{.Status}}" data-fingerprint="{{.Fingerprint}}">Edit</button>
-                <form method="post" action="/users/{{.ID}}?_method=DELETE" style="margin:0;">
-                  <button class="btn-pill btn-pill-danger" style="padding:4px 12px; font-size:11px;" onclick="return confirm('Deactivate this person?')">Deactivate</button>
+              <td class="row-actions" style="justify-content:flex-end">
+                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/users/{{.ID}}">Enroll</a>
+                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/attendance?user_id={{.ID}}">Logs</a>
+                <button type="button" class="btn-pill btn-pill-secondary edit-person" style="padding:4px 12px; font-size:11px" data-id="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-phone="{{.Phone}}" data-role="{{.Role}}" data-status="{{.Status}}" data-fingerprint="{{.Fingerprint}}">Edit</button>
+                <form method="post" action="/users/{{.ID}}?_method=DELETE" style="margin:0">
+                  <button class="btn-pill btn-pill-danger" style="padding:4px 12px; font-size:11px" onclick="return confirm('Deactivate this person?')">Deactivate</button>
                 </form>
               </td>
             </tr>
             {{else}}
             <tr>
-              <td colspan="5" class="table-empty" style="padding:60px 20px; color:#71717a;">
+              <td colspan="5" class="table-empty">
                 No members found. Add your first member to begin.
               </td>
             </tr>
@@ -151,7 +151,7 @@
       <div class="modal-2col-body">
         <!-- LEFT COLUMN: User Form Inputs -->
         <div class="modal-col-left">
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
             <label>
               First name
               <input name="first_name" id="personFirstName" placeholder="e.g. Ama" required oninput="syncFullName()">
@@ -173,7 +173,7 @@
             <input name="phone" id="personPhone" placeholder="+233...">
           </label>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
             <label>
               Role
               <select name="role" id="personRole">
@@ -222,12 +222,12 @@
             </div>
 
             <div>
-              <strong id="scannerStatusTitle" style="font-size: 15px; color:#09090b; display:block;">Fingerprint Enrollment</strong>
+              <strong id="scannerStatusTitle" style="font-size: 15px; color:var(--ink); display:block">Fingerprint Enrollment</strong>
               <div id="scannerStatusMsg" class="scanner-status-label">Click button to begin scan on selected device...</div>
             </div>
 
             <button type="button" id="requestScanBtn" class="btn-pill btn-pill-primary" onclick="requestFingerprintScan()">
-              <svg viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M12 11c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z"/><circle cx="12" cy="12" r="10"/></svg>
+              <svg viewBox="0 0 24 24" style="width:16px; height:16px"><path d="M12 11c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z"/><circle cx="12" cy="12" r="10"/></svg>
               Click to Request Fingerprint
             </button>
           </div>
@@ -360,7 +360,7 @@
       const glyphBox = document.getElementById('scannerGlyphBox');
       glyphBox.className = 'scanner-glyph-box state-success';
       glyphBox.innerHTML = `
-        <svg viewBox="0 0 24 24" style="color:#10b981;"><path d="M20 6L9 17l-5-5"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
       `;
 
       const msg = document.getElementById('scannerStatusMsg');

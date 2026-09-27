@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Provision organisation · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260918">
+  <link rel="stylesheet" href="/static/app.css?v=20260927">
 </head>
 <body class="app-shell">
   <header class="topbar">
     <a class="brand" href="/dashboard">
-      <span class="brand-mark">V</span>
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
       <span>verunum</span>
     </a>
     <span class="breadcrumb">/ Platform / Provision organisation</span>
@@ -32,7 +32,7 @@
     <a class="rail-link" href="/admin/organizations/new"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New Organisation</a>
   </aside>
 
-  <main class="form-main" style="padding-top: 40px;">
+  <main class="form-main" style="padding-top: 40px">
     <a class="back-link" href="/admin/organizations">
       <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       Back to organisations
@@ -47,7 +47,7 @@
     <form class="mono-card" method="post" action="/admin/organizations">
       <div class="form-section">
         <h2>Organisation details</h2>
-        <div class="form-grid" style="gap: 18px;">
+        <div class="form-grid" style="gap: 18px">
           <label class="full">Organisation name
             <input name="name" required placeholder="e.g. Bright Future Academy">
           </label>
@@ -69,9 +69,9 @@
         </div>
       </div>
 
-      <div class="form-section" style="border-top: 1px solid var(--border);">
+      <div class="form-section" style="border-top: 1px solid var(--border)">
         <h2>Initial administrator</h2>
-        <div class="form-grid" style="gap: 18px;">
+        <div class="form-grid" style="gap: 18px">
           <label>Full name
             <input name="admin_name" required placeholder="e.g. Ama Mensah">
           </label>
@@ -86,7 +86,7 @@
         <button type="submit" class="btn-pill btn-pill-primary">Provision account</button>
       </div>
 
-      {{if .Error}}<div class="alert-banner error form-error" style="margin: 0 24px 18px;">{{.Error}}</div>{{end}}
+      {{if .Error}}<div class="alert-banner error form-error" style="margin: 0 24px 18px">{{.Error}}</div>{{end}}
     </form>
   </main>
 </body>
