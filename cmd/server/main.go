@@ -8,10 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -124,10 +126,15 @@ func main() {
 	admin.DELETE("/users/:id", a.deleteUser)
 	admin.POST("/rfid-cards", a.createCard)
 	admin.PUT("/rfid-cards/:id", a.updateCard)
+	admin.GET("/roles", a.rolesPage)
+	admin.POST("/roles", a.createRole)
+	admin.POST("/roles/:id/delete", a.deleteRole)
 	admin.POST("/attendance/:id/correct", a.correctAttendance)
 	admin.POST("/sms/templates", a.createTemplate)
 	admin.GET("/account/password", a.changePasswordPage)
 	admin.POST("/account/password", a.changePassword)
+	admin.GET("/settings", a.settingsPage)
+	admin.POST("/settings", a.updateSettings)
 
 	staff := r.Group("/admin", a.adminAuth(), a.superAdmin())
 	staff.GET("/organizations", a.organizationsPage)
@@ -169,6 +176,7 @@ func main() {
 	device.GET("/commands", a.commands)
 	device.POST("/commands/:cmdId/ack", a.ackCommand)
 	device.POST("/enrollment/result", a.hub.EnrollResultHandler())
+	device.POST("/card/result", a.hub.CardResultHandler())
 	device.POST("/attendance", a.ingestAttendance)
 	device.POST("/attendance/batch", a.ingestBatch)
 
@@ -547,6 +555,10 @@ func (a *app) ingestAttendance(c *gin.Context) {
 	}
 	id, status, _, e := a.insertEvent(c.MustGet("org_id").(int), c.MustGet("device_id").(int), in)
 	if e != nil {
+		if errors.Is(e, errDuplicateClockEvent) {
+			c.JSON(http.StatusConflict, gin.H{"error": duplicateClockMessage(in.Event)})
+			return
+		}
 		c.JSON(400, gin.H{"error": e.Error()})
 		return
 	}
@@ -560,13 +572,20 @@ func (a *app) ingestBatch(c *gin.Context) {
 	}
 	org := c.MustGet("org_id").(int)
 	device := c.MustGet("device_id").(int)
-	created := 0
+	created, duplicates := 0, 0
 	for _, e := range in {
-		if id, _, isNew, err := a.insertEvent(org, device, e); err == nil && id > 0 && isNew {
+		id, _, isNew, err := a.insertEvent(org, device, e)
+		if err != nil {
+			if errors.Is(err, errDuplicateClockEvent) {
+				duplicates++
+			}
+			continue
+		}
+		if id > 0 && isNew {
 			created++
 		}
 	}
-	c.JSON(201, gin.H{"received": len(in), "created": created, "deduplicated": len(in) - created})
+	c.JSON(201, gin.H{"received": len(in), "created": created, "duplicates": duplicates, "deduplicated": len(in) - created - duplicates})
 }
 func normalizeMAC(v string) (string, bool) {
 	raw := strings.ToUpper(strings.TrimSpace(v))
@@ -595,6 +614,30 @@ func nullIfEmpty(v string) any {
 		return nil
 	}
 	return v
+}
+
+// errDuplicateClockEvent marks clock_in/clock_out events that do not alternate
+// against the member's latest stored event. Devices may rescan a finger twice;
+// those repeats must not become two clock-ins.
+var errDuplicateClockEvent = errors.New("duplicate clock event")
+
+func duplicateClockMessage(event string) string {
+	if event == "clock_out" {
+		return "not clocked in"
+	}
+	return "already clocked in"
+}
+
+// latestEventType returns the member's most recently recorded event type for
+// the org. Insertion order (id) drives the alternation check: offline batches
+// backfill older timestamps, so the newest stored event is the last one
+// recorded, not the one with the greatest timestamp.
+func (a *app) latestEventType(org, userID int) (string, bool) {
+	var t string
+	if err := a.db.QueryRow("SELECT event_type FROM attendance_events WHERE organization_id=? AND user_id=? ORDER BY id DESC LIMIT 1", org, userID).Scan(&t); err != nil {
+		return "", false
+	}
+	return t, true
 }
 
 func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool, error) {
@@ -628,12 +671,25 @@ func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool
 			return existingID, status, false, nil
 		}
 	}
+	if in.Event == "clock_in" || in.Event == "clock_out" {
+		latest, hasLatest := a.latestEventType(org, userID)
+		if (in.Event == "clock_in" && hasLatest && latest == "clock_in") ||
+			(in.Event == "clock_out" && (!hasLatest || latest == "clock_out")) {
+			return 0, "", false, errDuplicateClockEvent
+		}
+	}
 	r, err := a.db.Exec("INSERT OR IGNORE INTO attendance_events(organization_id,user_id,device_id,event_id,event_type,timestamp,verification_method,attendance_status) VALUES(?,?,?,?,?,?,?,?)", org, userID, deviceID, nullIfEmpty(in.EventID), in.Event, t.UTC().Format(time.RFC3339), in.Method, status)
 	if err != nil {
 		return 0, "", false, err
 	}
-	id, _ := r.LastInsertId()
-	created := id > 0
+	// LastInsertId keeps the previous insert's id on IGNORE, so an ignored
+	// row must be detected via RowsAffected instead.
+	affected, _ := r.RowsAffected()
+	created := affected > 0
+	var id int64
+	if created {
+		id, _ = r.LastInsertId()
+	}
 	if !created {
 		if in.EventID != "" {
 			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE event_id=? AND organization_id=?", in.EventID, org).Scan(&id)
@@ -807,13 +863,127 @@ func (a *app) dashboard(c *gin.Context) {
 	}
 	c.HTML(200, "dashboard.html", gin.H{"Title": "Dashboard", "Present": present, "Late": late, "Online": online, "Events": events})
 }
+
+// roleSlug normalises a role label ("Gate Marshall") to the value stored on
+// users.role ("gate_marshall").
+func roleSlug(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else if b.Len() > 0 && !strings.HasSuffix(b.String(), "_") {
+			b.WriteByte('_')
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+// roleLabel renders a role slug for display ("hr_admin" -> "HR admin").
+func roleLabel(slug string) string {
+	parts := strings.Split(slug, "_")
+	for i, p := range parts {
+		switch p {
+		case "":
+		case "hr":
+			parts[i] = "HR"
+		default:
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+var defaultRoles = []struct{ Slug, Name string }{
+	{"teacher", "Teacher"},
+	{"hr_admin", "HR admin"},
+	{"school_admin", "School admin"},
+	{"org_admin", "Organisation admin"},
+	{"viewer", "Viewer"},
+}
+
+// roleList returns the organisation's roles, seeding the defaults and adopting
+// any role values already assigned to people so dropdowns stay complete. The
+// seeding only runs when something is missing: writes while another query's
+// cursor is open would block on SQLite's file lock.
+func (a *app) roleList(org int) []gin.H {
+	items, seen := a.readRoles(org)
+	needSeed := false
+	for _, d := range defaultRoles {
+		if !seen[d.Slug] {
+			needSeed = true
+			break
+		}
+	}
+	assigned := []string{}
+	if rows, err := a.db.Query("SELECT DISTINCT role FROM users WHERE organization_id=? AND coalesce(role,'')!=''", org); err == nil {
+		for rows.Next() {
+			var r string
+			rows.Scan(&r)
+			assigned = append(assigned, r)
+		}
+		rows.Close()
+	}
+	for _, r := range assigned {
+		if !seen[r] {
+			needSeed = true
+			break
+		}
+	}
+	if !needSeed {
+		return items
+	}
+	for _, d := range defaultRoles {
+		_, _ = a.db.Exec("INSERT OR IGNORE INTO roles(organization_id,slug,name) VALUES(?,?,?)", org, d.Slug, d.Name)
+	}
+	for _, r := range assigned {
+		_, _ = a.db.Exec("INSERT OR IGNORE INTO roles(organization_id,slug,name) VALUES(?,?,?)", org, r, roleLabel(r))
+	}
+	items, _ = a.readRoles(org)
+	return items
+}
+
+func (a *app) readRoles(org int) ([]gin.H, map[string]bool) {
+	rows, err := a.db.Query("SELECT id,slug,name,(SELECT count(*) FROM users u WHERE u.organization_id=roles.organization_id AND u.role=roles.slug) FROM roles WHERE organization_id=? ORDER BY name", org)
+	if err != nil {
+		return nil, map[string]bool{}
+	}
+	defer rows.Close()
+	items := []gin.H{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var id, count int
+		var slug, name string
+		rows.Scan(&id, &slug, &name, &count)
+		items = append(items, gin.H{"ID": id, "Slug": slug, "Name": name, "Count": count})
+		seen[slug] = true
+	}
+	return items, seen
+}
+
+// roleNameMap resolves stored role slugs to display labels for a page.
+func roleNameMap(roles []gin.H) map[string]string {
+	m := make(map[string]string, len(roles))
+	for _, r := range roles {
+		m[r["Slug"].(string)] = r["Name"].(string)
+	}
+	return m
+}
+
 func (a *app) usersPage(c *gin.Context) {
 	if c.MustGet("claims").(claims).Role == "super_admin" {
 		c.Redirect(http.StatusFound, "/admin/organizations")
 		return
 	}
+	// Resolve roles and devices before opening the users cursor: any pending
+	// seed writes must not land while a read transaction is open.
+	roles := a.roleList(a.org(c))
+	labels := roleNameMap(roles)
+	devices := a.orgDeviceList(c)
 	q := strings.TrimSpace(c.Query("q"))
-	query := "SELECT id,full_name,email,phone,role,fingerprint_status,status,uuid FROM users WHERE organization_id=?"
+	query := `SELECT id,full_name,email,phone,role,fingerprint_status,status,uuid,
+		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='issued'),
+		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='pending')
+		FROM users WHERE organization_id=?`
 	args := []any{a.org(c)}
 	if q != "" {
 		query += " AND (lower(full_name) LIKE ? OR lower(coalesce(email,'')) LIKE ?)"
@@ -824,15 +994,19 @@ func (a *app) usersPage(c *gin.Context) {
 	defer rows.Close()
 	users := []gin.H{}
 	for rows.Next() {
-		var id int
+		var id, cards, pending int
 		var n, e, p, r, f, s, u string
-		rows.Scan(&id, &n, &e, &p, &r, &f, &s, &u)
-		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "Fingerprint": f, "Status": s, "UUID": u})
+		rows.Scan(&id, &n, &e, &p, &r, &f, &s, &u, &cards, &pending)
+		label := labels[r]
+		if label == "" && r != "" {
+			label = roleLabel(r)
+		}
+		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "RoleLabel": label, "Fingerprint": f, "Status": s, "UUID": u, "Cards": cards, "PendingCards": pending})
 	}
-	c.HTML(200, "users.html", gin.H{"Title": "Users", "Users": users, "Query": q, "Devices": a.orgDeviceList(c)})
+	c.HTML(200, "users.html", gin.H{"Title": "Users", "Users": users, "Query": q, "Devices": devices, "Roles": roles})
 }
 func (a *app) newUserPage(c *gin.Context) {
-	c.HTML(200, "user_form.html", gin.H{"Title": "Add person", "Devices": a.orgDeviceList(c), "Person": nil})
+	c.HTML(200, "user_form.html", gin.H{"Title": "Add person", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Person": nil})
 }
 func (a *app) userPage(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -845,8 +1019,95 @@ func (a *app) userPage(c *gin.Context) {
 		c.Status(404)
 		return
 	}
-	c.HTML(200, "user_form.html", gin.H{"Title": "Add fingerprint", "Devices": a.orgDeviceList(c), "Person": gin.H{"ID": id, "Name": name, "Email": email, "Phone": phone, "Role": role, "Fingerprint": fp, "Status": status, "UUID": publicID}})
+	c.HTML(200, "user_form.html", gin.H{"Title": "Add fingerprint", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Person": gin.H{"ID": id, "Name": name, "Email": email, "Phone": phone, "Role": role, "Fingerprint": fp, "Status": status, "UUID": publicID}})
 }
+
+func (a *app) rolesPage(c *gin.Context) {
+	c.HTML(200, "roles.html", gin.H{"Title": "Roles", "Roles": a.roleList(a.org(c)), "Error": c.Query("error")})
+}
+
+func (a *app) createRole(c *gin.Context) {
+	var in struct {
+		Name string `form:"name" json:"name"`
+	}
+	if c.ShouldBind(&in) != nil {
+		in.Name = ""
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	slug := roleSlug(in.Name)
+	if slug == "" {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/roles?error=invalid")
+			return
+		}
+		c.JSON(400, gin.H{"error": "name required"})
+		return
+	}
+	res, err := a.db.Exec("INSERT OR IGNORE INTO roles(organization_id,slug,name) VALUES(?,?,?)", a.org(c), slug, in.Name)
+	if err != nil {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/roles?error=invalid")
+			return
+		}
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/roles?error=duplicate")
+			return
+		}
+		c.JSON(400, gin.H{"error": "role already exists"})
+		return
+	}
+	id, _ := res.LastInsertId()
+	a.audit(c, "create", "role", id, "", in)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/roles")
+		return
+	}
+	c.JSON(201, gin.H{"id": id, "slug": slug, "name": in.Name})
+}
+
+func (a *app) deleteRole(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(404)
+		return
+	}
+	org := a.org(c)
+	var slug string
+	if a.db.QueryRow("SELECT slug FROM roles WHERE id=? AND organization_id=?", id, org).Scan(&slug) != nil {
+		c.Status(404)
+		return
+	}
+	var assigned int
+	_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=? AND role=?", org, slug).Scan(&assigned)
+	if assigned > 0 {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/roles?error=in_use")
+			return
+		}
+		c.JSON(400, gin.H{"error": "role is assigned to people"})
+		return
+	}
+	res, err := a.db.Exec("DELETE FROM roles WHERE id=? AND organization_id=?", id, org)
+	if err != nil {
+		c.Status(500)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.Status(404)
+		return
+	}
+	a.audit(c, "delete", "role", int64(id), "", nil)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/roles")
+		return
+	}
+	c.Status(204)
+}
+
 func (a *app) orgDeviceList(c *gin.Context) []gin.H {
 	rows, err := a.db.Query("SELECT id,name,status FROM devices WHERE organization_id=? ORDER BY name", a.org(c))
 	if err != nil {
@@ -898,7 +1159,8 @@ func (a *app) newDevicePage(c *gin.Context) {
 }
 func (a *app) cardsPage(c *gin.Context) {
 	q := strings.TrimSpace(c.Query("q"))
-	query := "SELECT r.id,r.uid,coalesce(u.full_name,''),r.status,r.personalization_status,r.issue_date,coalesce(r.expiry_date,'') FROM rfid_cards r LEFT JOIN users u ON u.id=r.user_id WHERE r.organization_id=?"
+	query := `SELECT r.id,r.uid,coalesce(u.full_name,''),r.status,r.personalization_status,r.issue_date,coalesce(r.expiry_date,''),coalesce(d.name,''),coalesce(r.device_id,0)
+		FROM rfid_cards r LEFT JOIN users u ON u.id=r.user_id LEFT JOIN devices d ON d.id=r.device_id WHERE r.organization_id=?`
 	args := []any{a.org(c)}
 	if q != "" {
 		query += " AND (lower(r.uid) LIKE ? OR lower(coalesce(u.full_name,'')) LIKE ?)"
@@ -908,15 +1170,16 @@ func (a *app) cardsPage(c *gin.Context) {
 	defer rows.Close()
 	items := []gin.H{}
 	for rows.Next() {
-		var id int
-		var uid, n, s, p, i, e string
-		rows.Scan(&id, &uid, &n, &s, &p, &i, &e)
-		items = append(items, gin.H{"ID": id, "UID": uid, "Name": n, "Status": s, "Personalization": p, "Issued": i, "Expiry": e})
+		var id, deviceID int
+		var uid, n, s, p, i, e, dev string
+		rows.Scan(&id, &uid, &n, &s, &p, &i, &e, &dev, &deviceID)
+		items = append(items, gin.H{"ID": id, "UID": uid, "Name": n, "Status": s, "Personalization": p, "Issued": i, "Expiry": e, "Device": dev, "DeviceID": deviceID})
 	}
 	c.HTML(200, "cards.html", gin.H{"Title": "RFID Cards", "Cards": items, "Query": q})
 }
 func (a *app) newCardPage(c *gin.Context) {
-	rows, _ := a.db.Query("SELECT id,full_name FROM users WHERE organization_id=? AND status='active' ORDER BY full_name", a.org(c))
+	org := a.org(c)
+	rows, _ := a.db.Query("SELECT id,full_name FROM users WHERE organization_id=? AND status='active' ORDER BY full_name", org)
 	defer rows.Close()
 	users := []gin.H{}
 	for rows.Next() {
@@ -925,7 +1188,106 @@ func (a *app) newCardPage(c *gin.Context) {
 		rows.Scan(&id, &name)
 		users = append(users, gin.H{"ID": id, "Name": name})
 	}
-	c.HTML(200, "card_form.html", gin.H{"Title": "Issue RFID card", "Users": users})
+
+	connected := a.hub.ConnectedIDs(org)
+	devices := []gin.H{}
+	if len(connected) > 0 {
+		drows, err := a.db.Query("SELECT id,name FROM devices WHERE organization_id=? AND status NOT IN ('revoked','offline') ORDER BY name", org)
+		if err == nil {
+			for drows.Next() {
+				var id int
+				var name string
+				drows.Scan(&id, &name)
+				if connected[id] {
+					devices = append(devices, gin.H{"ID": id, "Name": name})
+				}
+			}
+			drows.Close()
+		}
+	}
+	c.HTML(200, "card_form.html", gin.H{"Title": "Issue RFID card", "Users": users, "Devices": devices,
+		"Error": c.Query("error"), "ErrorUID": c.Query("uid")})
+}
+
+func (a *app) settingsPage(c *gin.Context) {
+	org := a.org(c)
+	start, end := "08:00", "17:00"
+	late, early := 15, 15
+	var hours string
+	if a.db.QueryRow("SELECT working_hours, late_threshold_minutes, early_departure_minutes FROM attendance_rules WHERE organization_id=?", org).Scan(&hours, &late, &early) == nil {
+		var h struct {
+			Start string `json:"start"`
+			End   string `json:"end"`
+		}
+		if json.Unmarshal([]byte(hours), &h) == nil {
+			if h.Start != "" {
+				start = h.Start
+			}
+			if h.End != "" {
+				end = h.End
+			}
+		}
+	}
+	c.HTML(200, "settings.html", gin.H{
+		"Title": "Work hours", "Start": start, "End": end, "Late": late, "Early": early,
+		"Saved": c.Query("saved") == "1", "Error": c.Query("error"),
+	})
+}
+
+func (a *app) updateSettings(c *gin.Context) {
+	var in struct {
+		Start string `form:"start" json:"start"`
+		End   string `form:"end" json:"end"`
+		Late  int    `form:"late_threshold_minutes" json:"late_threshold_minutes"`
+		Early int    `form:"early_departure_minutes" json:"early_departure_minutes"`
+	}
+	if c.ShouldBind(&in) != nil {
+		a.settingsError(c, "invalid")
+		return
+	}
+	validClock := func(v string) bool {
+		p := strings.Split(v, ":")
+		if len(p) != 2 {
+			return false
+		}
+		h, e1 := strconv.Atoi(p[0])
+		m, e2 := strconv.Atoi(p[1])
+		return e1 == nil && e2 == nil && h >= 0 && h < 24 && m >= 0 && m < 60
+	}
+	if !validClock(in.Start) || !validClock(in.End) || in.Late < 0 || in.Late > 240 || in.Early < 0 || in.Early > 240 {
+		a.settingsError(c, "invalid")
+		return
+	}
+	hours, _ := json.Marshal(gin.H{"start": in.Start, "end": in.End})
+	org := a.org(c)
+	_, err := a.db.Exec(`INSERT INTO attendance_rules(organization_id,working_hours,late_threshold_minutes,early_departure_minutes,updated_at)
+		VALUES(?,?,?,?,?)
+		ON CONFLICT(organization_id) DO UPDATE SET working_hours=excluded.working_hours,
+		late_threshold_minutes=excluded.late_threshold_minutes,early_departure_minutes=excluded.early_departure_minutes,
+		updated_at=excluded.updated_at`,
+		org, string(hours), in.Late, in.Early, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		a.settingsError(c, "save_failed")
+		return
+	}
+	a.audit(c, "update", "attendance_rules", int64(org), "", in)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/settings?saved=1")
+		return
+	}
+	c.JSON(200, gin.H{"start": in.Start, "end": in.End, "late_threshold_minutes": in.Late, "early_departure_minutes": in.Early})
+}
+
+func (a *app) settingsError(c *gin.Context, code string) {
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/settings?error="+code)
+		return
+	}
+	message := map[string]string{
+		"invalid":     "start and end must be HH:MM and thresholds must be between 0 and 240 minutes",
+		"save_failed": "could not save settings",
+	}[code]
+	c.JSON(400, gin.H{"error": message, "code": code})
 }
 
 // calendarDay is one cell of the attendance week strip. Level is the day's
@@ -1830,28 +2192,120 @@ func (a *app) createDevice(c *gin.Context) {
 	}
 	c.JSON(201, gin.H{"id": id, "api_key": key})
 }
+
+// cardIssueError reports a rejected issue-card submission: the operator goes
+// back to the form with a readable banner, API callers get JSON. Driver errors
+// never reach either surface.
+func (a *app) cardIssueError(c *gin.Context, status int, code, uid string) {
+	if wantsHTML(c) {
+		q := url.Values{"error": {code}}
+		if uid != "" {
+			q.Set("uid", uid)
+		}
+		c.Redirect(http.StatusFound, "/rfid-cards/new?"+q.Encode())
+		return
+	}
+	message := map[string]string{
+		"uid_required":     "uid required",
+		"device_not_found": "device not found",
+		"device_offline":   "terminal is offline. Power it on and try again.",
+		"person_not_found": "person not found",
+		"save_failed":      "could not save the card",
+		"sync_failed":      "could not queue the card to the terminal",
+	}[code]
+	c.JSON(status, gin.H{"error": message, "code": code})
+}
+
 func (a *app) createCard(c *gin.Context) {
 	var in struct {
 		UserID     int    `form:"user_id" json:"user_id"`
 		UID        string `form:"uid" json:"uid"`
 		ExpiryDate string `form:"expiry_date" json:"expiry_date"`
+		DeviceID   int    `form:"device_id" json:"device_id"`
 	}
-	if c.ShouldBind(&in) != nil || in.UID == "" {
-		c.JSON(400, gin.H{"error": "uid required"})
+	if c.ShouldBind(&in) != nil || strings.TrimSpace(in.UID) == "" {
+		a.cardIssueError(c, 400, "uid_required", "")
 		return
 	}
-	r, e := a.db.Exec("INSERT INTO rfid_cards(organization_id,user_id,uid,issue_date,expiry_date) VALUES(?,?,?,?,?)", a.org(c), in.UserID, in.UID, time.Now().Format("2006-01-02"), in.ExpiryDate)
-	if e != nil {
-		c.JSON(400, gin.H{"error": e.Error()})
-		return
+	in.UID = strings.TrimSpace(in.UID)
+	org := a.org(c)
+
+	if in.DeviceID > 0 {
+		var found int
+		if a.db.QueryRow("SELECT count(*) FROM devices WHERE id=? AND organization_id=?", in.DeviceID, org).Scan(&found) != nil || found == 0 {
+			a.cardIssueError(c, 404, "device_not_found", in.UID)
+			return
+		}
+		if !a.hub.Connected(in.DeviceID) {
+			a.cardIssueError(c, 400, "device_offline", in.UID)
+			return
+		}
 	}
-	id, _ := r.LastInsertId()
-	a.audit(c, "issue", "rfid_card", id, "", in)
-	if strings.Contains(c.GetHeader("Accept"), "text/html") || strings.HasPrefix(c.GetHeader("Content-Type"), "application/x-www-form-urlencoded") {
+	if in.UserID > 0 {
+		var found int
+		if a.db.QueryRow("SELECT count(*) FROM users WHERE id=? AND organization_id=?", in.UserID, org).Scan(&found) != nil || found == 0 {
+			a.cardIssueError(c, 404, "person_not_found", in.UID)
+			return
+		}
+	}
+
+	// Cards aimed at a terminal stay pending until the device confirms it
+	// accepted the UID; device-less cards are registered as issued directly.
+	status := "issued"
+	if in.DeviceID > 0 {
+		status = "pending"
+	}
+	// Unassigned cards must store NULL: 0 would violate the users(id) FK.
+	var holder any
+	if in.UserID > 0 {
+		holder = in.UserID
+	}
+
+	// A UID exists at most once per organisation. Re-issuing a known UID
+	// retargets the stored card rather than failing, so a card can be synced to
+	// a terminal or handed to a new person later.
+	var existingID int64
+	existing := a.db.QueryRow("SELECT id FROM rfid_cards WHERE organization_id=? AND upper(uid)=upper(?)", org, in.UID).Scan(&existingID) == nil
+	var id int64
+	if existing {
+		if _, e := a.db.Exec(`UPDATE rfid_cards SET user_id=?,expiry_date=?,status=?,
+			personalization_status=CASE WHEN personalization_status='failed' THEN 'pending' ELSE personalization_status END
+			WHERE id=? AND organization_id=?`, holder, in.ExpiryDate, status, existingID, org); e != nil {
+			a.cardIssueError(c, 500, "save_failed", in.UID)
+			return
+		}
+		id = existingID
+		a.audit(c, "reissue", "rfid_card", id, "", in)
+	} else {
+		r, e := a.db.Exec("INSERT INTO rfid_cards(organization_id,user_id,uid,issue_date,expiry_date,status) VALUES(?,?,?,?,?,?)", org, holder, in.UID, time.Now().Format("2006-01-02"), in.ExpiryDate, status)
+		if e != nil {
+			a.cardIssueError(c, 500, "save_failed", in.UID)
+			return
+		}
+		id, _ = r.LastInsertId()
+		a.audit(c, "issue", "rfid_card", id, "", in)
+	}
+
+	var requestID string
+	var delivered bool
+	if in.DeviceID > 0 {
+		var userUUID string
+		if in.UserID > 0 {
+			_ = a.db.QueryRow("SELECT uuid FROM users WHERE id=? AND organization_id=?", in.UserID, org).Scan(&userUUID)
+		}
+		var e error
+		requestID, delivered, e = a.hub.StartCardEnrollment(org, in.DeviceID, int(id), in.UID, userUUID)
+		if e != nil {
+			a.cardIssueError(c, 500, "sync_failed", in.UID)
+			return
+		}
+	}
+
+	if wantsHTML(c) {
 		c.Redirect(http.StatusFound, "/rfid-cards")
 		return
 	}
-	c.JSON(201, gin.H{"id": id})
+	c.JSON(201, gin.H{"id": id, "status": status, "device_id": in.DeviceID, "request_id": requestID, "delivered": delivered})
 }
 func (a *app) updateCard(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
@@ -1937,11 +2391,15 @@ func (a *app) userStatus(c *gin.Context) {
 		return
 	}
 	var name, publicID, fp, status string
-	if a.db.QueryRow("SELECT full_name,uuid,fingerprint_status,status FROM users WHERE id=? AND organization_id=?", id, a.org(c)).Scan(&name, &publicID, &fp, &status) != nil {
+	var cards, pending int
+	if a.db.QueryRow(`SELECT full_name,uuid,fingerprint_status,status,
+		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='issued'),
+		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='pending')
+		FROM users WHERE id=? AND organization_id=?`, id, a.org(c)).Scan(&name, &publicID, &fp, &status, &cards, &pending) != nil {
 		c.JSON(404, gin.H{"error": "person not found"})
 		return
 	}
-	c.JSON(200, gin.H{"id": id, "uuid": publicID, "full_name": name, "fingerprint_status": fp, "status": status})
+	c.JSON(200, gin.H{"id": id, "uuid": publicID, "full_name": name, "fingerprint_status": fp, "status": status, "cards": cards, "pending_cards": pending})
 }
 
 func (a *app) startEnroll(c *gin.Context) {

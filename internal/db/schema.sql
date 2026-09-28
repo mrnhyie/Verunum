@@ -54,6 +54,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_org_email ON users (organization_id, ema
 WHERE
     email IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS roles (
+    id INTEGER PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations (id),
+    slug TEXT NOT NULL,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS roles_org_slug ON roles (organization_id, slug);
+
 CREATE TABLE IF NOT EXISTS pending_device_enrollments (
     id VARCHAR(36) PRIMARY KEY,
     org_id VARCHAR(36) NOT NULL,
@@ -99,6 +109,7 @@ CREATE TABLE IF NOT EXISTS rfid_cards (
     id INTEGER PRIMARY KEY,
     organization_id INTEGER NOT NULL REFERENCES organizations (id),
     user_id INTEGER REFERENCES users (id),
+    device_id INTEGER REFERENCES devices (id),
     uid TEXT NOT NULL,
     card_uid TEXT,
     card_type TEXT NOT NULL DEFAULT 'standard',

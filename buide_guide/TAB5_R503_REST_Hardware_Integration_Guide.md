@@ -204,6 +204,18 @@ HTTP/1.1 200 OK
         "timeout_seconds": 30
       },
       "created_at": "2026-09-25T00:00:00Z"
+    },
+    {
+      "id": 42,
+      "command_type": "card.enroll",
+      "payload": {
+        "request_id": "42",
+        "card_id": 7,
+        "card_uid": "04A2B3C4",
+        "user_id": "user-uuid",
+        "timeout_seconds": 30
+      },
+      "created_at": "2026-09-25T00:00:05Z"
     }
   ]
 }
@@ -211,7 +223,8 @@ HTTP/1.1 200 OK
 
 - Recommended polling interval: **every 2–5 seconds** during normal operation, with backoff when the network is unavailable.
 - Pending commands remain on the backend until the device acknowledges them. This is what allows an offline device to receive a command after it comes back online.
-- The `payload.request_id` field equals the command `id` as a string — use it to correlate the enrollment result (see §9).
+- Two command types exist: `enroll.start` (fingerprint enrollment — see §9) and `card.enroll` (RFID card sync — see §9a).
+- The `payload.request_id` field equals the command `id` as a string — use it to correlate the result you report back.
 
 ---
 
@@ -279,6 +292,80 @@ Content-Type: application/json
 **Biometric rule:** raw fingerprint templates are **never** sent to the Verunum backend under this contract. The biometric operation remains local to the TAB5/R503.
 
 **Response:** `200 OK` — the command is acknowledged and the user's fingerprint status is updated on the dashboard.
+
+---
+
+## 9a. RFID Card Enrollment
+
+RFID cards follow the same pending-until-confirmed pattern as fingerprints: the card is not bound to a terminal until the terminal itself reads/confirms the UID and reports back.
+
+**Dashboard side:** the administrator registers an RFID card and selects a terminal to sync it to. The card is created in **pending** state and the backend queues a `card.enroll` command for that device. The TAB5 discovers the command through command polling (§7), reads the card UID locally (R503 card reader or manual UID entry, whichever the firmware implements), and reports the outcome.
+
+Example command (as returned by the poll in §7):
+
+```json
+{
+  "id": 42,
+  "command_type": "card.enroll",
+  "payload": {
+    "request_id": "42",
+    "card_id": 7,
+    "card_uid": "04A2B3C4",
+    "user_id": "user-uuid",
+    "timeout_seconds": 30
+  }
+}
+```
+
+| Field | Notes |
+|---|---|
+| `request_id` | The command `id` as a string — correlation key. |
+| `card_id` | Verunum card record ID (integer). |
+| `card_uid` | The card UID as registered in the dashboard. |
+| `user_id` | UUID of the cardholder, if the card is assigned to a user. Absent for unassigned cards. |
+| `timeout_seconds` | Suggested window for the operator to present/enter the card. |
+
+**The TAB5 reports the result:**
+
+```http
+POST /api/v1/devices/{device_id}/card/result
+X-Device-Key: <api-key>
+Content-Type: application/json
+
+{
+  "command_id": 42,
+  "request_id": "42",
+  "card_id": 7,
+  "card_uid": "04A2B3C4",
+  "success": true
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `command_id` | no | The `id` of the command being reported (preferred correlation key). |
+| `request_id` | no | The `payload.request_id` from the polled command (alternative correlation key). |
+| `card_id` | no | The Verunum card record ID from the command. |
+| `card_uid` | no | The UID the device confirmed. Used to locate the card when `card_id` is omitted (case-insensitive). |
+| `success` | recommended | `true` = the terminal accepted/stored the card UID; `false` = failed. |
+| `status` | no | Alternative to `success`: accepted values `success` / `issued` / `confirmed` / `linked` (→ issued), `cancelled` / `canceled` (→ cancelled). |
+
+Send at least one identifier (`command_id`, `request_id`, `card_id`, or `card_uid`) plus `success`. When known, send all of them — the backend correlates in that order.
+
+**Behaviour on success (`success: true`):**
+
+- The card moves from **pending** to **issued**, personalisation becomes **Verified**, and the card is **bound to the reporting terminal** (`device_id`).
+- The command is acknowledged and will not be re-delivered.
+- The dashboard updates automatically.
+
+**Behaviour on failure (`success: false`):** the card is marked **failed** and stays unbound; the command is still acknowledged (so it is not re-delivered). The administrator can issue the card to the terminal again.
+
+**Errors:**
+
+| Status | Condition |
+|---|---|
+| `400` | Malformed JSON, or no card identifier could be resolved. |
+| `404` | Card not found in this device's organisation ("unknown card"). |
 
 ---
 
@@ -426,7 +513,9 @@ Have API key?
   ▼
 heartbeat every 30s
   │
-  ├──► poll commands (every 2–5s) ──► enroll.start ──► R503 capture ──► POST enrollment/result ──► ack command
+  ├──► poll commands (every 2–5s)
+  │      ├─ enroll.start ──► R503 capture ──► POST enrollment/result ──► ack command
+  │      └─ card.enroll  ──► read card UID ──► POST card/result ──► ack command
   │
   └──► fingerprint scan ──► local match ──► POST attendance ──► 201
 ```
@@ -442,6 +531,7 @@ heartbeat every 30s
 | `GET` | `/api/v1/devices/{device_id}/commands` | Poll pending commands |
 | `POST` | `/api/v1/devices/{device_id}/commands/{command_id}/ack` | Acknowledge command |
 | `POST` | `/api/v1/devices/{device_id}/enrollment/result` | Return enrollment result |
+| `POST` | `/api/v1/devices/{device_id}/card/result` | Return RFID card sync result |
 | `POST` | `/api/v1/devices/{device_id}/attendance` | Submit one attendance event |
 | `POST` | `/api/v1/devices/{device_id}/attendance/batch` | Synchronize queued attendance events |
 
@@ -451,6 +541,7 @@ heartbeat every 30s
 |---|---|---|
 | `POST` | `/api/v1/platform/devices/pending` | Create pending provisioning record (pre-hello) |
 | `POST` | `/api/v1/devices/{device_id}/enroll-request` | Create fingerprint enrollment command |
+| `POST` | `/rfid-cards` | Issue RFID card; queues a `card.enroll` command when a terminal is selected |
 
 ---
 
@@ -541,6 +632,8 @@ READY
 - [ ] Implement `enroll.start` handling.
 - [ ] Use R503 locally for fingerprint capture.
 - [ ] Implement enrollment result reporting (`POST /enrollment/result`).
+- [ ] Implement `card.enroll` handling (read / store the RFID card UID locally).
+- [ ] Implement card sync result reporting (`POST /card/result`).
 - [ ] Implement local fingerprint matching.
 - [ ] Generate a unique attendance `event_id` per event.
 - [ ] Preserve `event_id` when retrying.
@@ -564,21 +657,25 @@ READY
 8. TAB5 securely stores the key.
 9. TAB5 sends heartbeat (`204`).
 10. TAB5 polls commands (empty list).
-11. Admin starts enrollment.
+11. Admin starts fingerprint enrollment.
 12. TAB5 receives `enroll.start`.
 13. R503 captures the fingerprint locally.
 14. TAB5 `POST`s `enrollment/result`; command becomes `acked`.
-15. User presents fingerprint.
-16. TAB5 matches locally.
-17. TAB5 `POST`s attendance with `event_id` (`201`, `attendance_status` returned).
-18. Backend stores the attendance.
-19. Disconnect network.
-20. User presents fingerprint again.
-21. TAB5 stores attendance locally (same `event_id`, original timestamp).
-22. Restore network.
-23. TAB5 retries the same `event_id`.
-24. Backend returns the original record ID — stored once.
-25. TAB5 continues heartbeat and command polling.
+15. Admin registers an RFID card and selects the terminal.
+16. TAB5 receives `card.enroll`.
+17. TAB5 reads/confirms the card UID locally.
+18. TAB5 `POST`s `card/result`; command becomes `acked`; the card is marked verified and bound to the terminal on the dashboard.
+19. User presents fingerprint.
+20. TAB5 matches locally.
+21. TAB5 `POST`s attendance with `event_id` (`201`, `attendance_status` returned).
+22. Backend stores the attendance.
+23. Disconnect network.
+24. User presents fingerprint again.
+25. TAB5 stores attendance locally (same `event_id`, original timestamp).
+26. Restore network.
+27. TAB5 retries the same `event_id`.
+28. Backend returns the original record ID — stored once.
+29. TAB5 continues heartbeat and command polling.
 
 ---
 

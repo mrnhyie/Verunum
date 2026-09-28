@@ -75,6 +75,10 @@ func Open(path string) (*sql.DB, error) {
 	if err := ensureColumn(database, "rfid_cards", "card_type", "TEXT NOT NULL DEFAULT 'standard'"); err != nil {
 		return nil, err
 	}
+	// Set only after a terminal confirms it accepted the card UID.
+	if err := ensureColumn(database, "rfid_cards", "device_id", "INTEGER REFERENCES devices (id)"); err != nil {
+		return nil, err
+	}
 	if _, err := database.Exec(`CREATE TABLE IF NOT EXISTS pending_device_enrollments (
 		id VARCHAR(36) PRIMARY KEY,
 		org_id VARCHAR(36) NOT NULL,

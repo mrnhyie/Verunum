@@ -424,6 +424,138 @@ func (h *Hub) StartEnrollmentWithParams(orgID, deviceID, userID int, userUUID st
 }
 
 // ---------------------------------------------------------------------------
+// RFID card enrollment — same polling contract as fingerprint enrollment
+// ---------------------------------------------------------------------------
+
+// StartCardEnrollment queues a card.enroll command so the terminal can add the
+// UID to its local roster. The card stays pending until the device confirms
+// via the card result endpoint.
+func (h *Hub) StartCardEnrollment(orgID, deviceID, cardID int, cardUID, userUUID string) (requestID string, delivered bool, err error) {
+	payload, _ := json.Marshal(CardEnrollPayload{
+		CardID:         cardID,
+		CardUID:        cardUID,
+		UserID:         userUUID,
+		TimeoutSeconds: 30,
+	})
+	r, err := h.db.Exec("INSERT INTO device_commands(organization_id,device_id,command_type,payload_json,status) VALUES(?,?,?,?,?)", orgID, deviceID, TypeCardEnroll, string(payload), "pending")
+	if err != nil {
+		return "", false, err
+	}
+	cmdID, _ := r.LastInsertId()
+	requestID = strconv.FormatInt(cmdID, 10)
+
+	// The device correlates its card result with this command via request_id.
+	payload, _ = json.Marshal(CardEnrollPayload{
+		RequestID:      requestID,
+		CardID:         cardID,
+		CardUID:        cardUID,
+		UserID:         userUUID,
+		TimeoutSeconds: 30,
+	})
+	_, _ = h.db.Exec("UPDATE device_commands SET payload_json=? WHERE id=?", string(payload), cmdID)
+
+	_, _ = h.db.Exec("UPDATE rfid_cards SET status='pending',personalization_status='pending' WHERE id=? AND organization_id=?", cardID, orgID)
+
+	delivered = h.Connected(deviceID)
+	return requestID, delivered, nil
+}
+
+func (h *Hub) lookupCard(orgID, cardID int, cardUID string) (id int, uid, userUUID string, err error) {
+	const cols = `SELECT r.id, r.uid, COALESCE(u.uuid,'') FROM rfid_cards r LEFT JOIN users u ON u.id=r.user_id`
+	if cardID > 0 {
+		err = h.db.QueryRow(cols+" WHERE r.id=? AND r.organization_id=?", cardID, orgID).Scan(&id, &uid, &userUUID)
+		return
+	}
+	err = h.db.QueryRow(cols+" WHERE r.organization_id=? AND (r.uid=? OR UPPER(r.uid)=UPPER(?)) ORDER BY r.id LIMIT 1", orgID, cardUID, cardUID).Scan(&id, &uid, &userUUID)
+	return
+}
+
+// CardResultHandler handles POST /api/v1/devices/:id/card/result — the
+// terminal's report that it accepted (or rejected) an RFID card UID. On
+// success the card is bound to the reporting device.
+func (h *Hub) CardResultHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deviceID := c.MustGet("device_id").(int)
+		orgID := c.MustGet("org_id").(int)
+
+		var p CardResultPayload
+		if err := c.ShouldBindJSON(&p); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+
+		status := strings.ToLower(strings.TrimSpace(p.Status))
+		if p.Success != nil {
+			if *p.Success {
+				status = "issued"
+			} else {
+				status = "failed"
+			}
+		}
+		var cardStatus, personalization string
+		switch status {
+		case "success", "issued", "confirmed", "linked":
+			cardStatus, personalization = "issued", "personalized"
+		case "cancelled", "canceled":
+			cardStatus, personalization = "cancelled", "pending"
+		default:
+			cardStatus, personalization = "failed", "failed"
+		}
+
+		// Identify the card by id, UID, or by the command it is answering.
+		p.CardUID = strings.TrimSpace(p.CardUID)
+		if p.CardID == 0 && p.CardUID == "" && p.RequestID != "" {
+			var payloadJSON string
+			if h.db.QueryRow("SELECT payload_json FROM device_commands WHERE organization_id=? AND device_id=? AND command_type=? AND id=CAST(? AS INTEGER)",
+				orgID, deviceID, TypeCardEnroll, p.RequestID).Scan(&payloadJSON) == nil {
+				var cp CardEnrollPayload
+				if json.Unmarshal([]byte(payloadJSON), &cp) == nil {
+					p.CardID, p.CardUID = cp.CardID, cp.CardUID
+				}
+			}
+		}
+		if p.CardID == 0 && p.CardUID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "card_id, card_uid or request_id required"})
+			return
+		}
+		cardID, cardUID, userUUID, err := h.lookupCard(orgID, p.CardID, p.CardUID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "unknown card"})
+			return
+		}
+
+		now := time.Now().UTC().Format(time.RFC3339)
+		if cardStatus == "issued" {
+			_, _ = h.db.Exec("UPDATE rfid_cards SET status=?,personalization_status=?,device_id=? WHERE id=? AND organization_id=?",
+				cardStatus, personalization, deviceID, cardID, orgID)
+		} else {
+			_, _ = h.db.Exec("UPDATE rfid_cards SET status=?,personalization_status=? WHERE id=? AND organization_id=?",
+				cardStatus, personalization, cardID, orgID)
+		}
+
+		// Ack the matching pending command: prefer explicit command_id, then
+		// request_id, then fall back to the pending card.enroll for this card.
+		if p.CommandID > 0 {
+			_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND id=?", now, orgID, deviceID, p.CommandID)
+		} else if p.RequestID != "" {
+			_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND id=CAST(? AS INTEGER)", now, orgID, deviceID, p.RequestID)
+		}
+		_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND status IN ('pending','delivered') AND command_type=? AND payload_json LIKE ?",
+			now, orgID, deviceID, TypeCardEnroll, fmt.Sprintf("%%\"card_id\":%d%%", cardID))
+
+		h.BroadcastSSE(SSEEvent{
+			Event:    "card.enrollment_updated",
+			Status:   cardStatus,
+			CardUID:  cardUID,
+			UserID:   userUUID,
+			DeviceID: fmt.Sprintf("dev_%d", deviceID),
+		})
+
+		c.JSON(http.StatusOK, AckPayload{OK: true, Status: cardStatus})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

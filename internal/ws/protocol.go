@@ -11,6 +11,7 @@ const (
 	TypePong         = "pong"
 	TypeEnrollStart  = "enroll.start"
 	TypeEnrollResult = "enroll.result"
+	TypeCardEnroll   = "card.enroll"
 	TypeAttendance   = "attendance"
 	TypeAck          = "ack"
 	TypeError        = "error"
@@ -58,6 +59,29 @@ type EnrollResultPayload struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// CardEnrollPayload tells the terminal to add an RFID card UID to its local
+// roster and bind it to the given user.
+type CardEnrollPayload struct {
+	RequestID      string `json:"request_id"`
+	CardID         int    `json:"card_id"`
+	CardUID        string `json:"card_uid"`
+	UserID         string `json:"user_id,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+}
+
+// CardResultPayload is the report the TAB5 sends after accepting (or failing
+// to accept) an RFID card UID from a card.enroll command.
+type CardResultPayload struct {
+	CommandID int    `json:"command_id,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	CardID    int    `json:"card_id,omitempty"`
+	CardUID   string `json:"card_uid,omitempty"`
+	UserID    string `json:"user_id,omitempty"`
+	Success   *bool  `json:"success,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type AttendancePayload struct {
 	EventID   string `json:"event_id"`
 	UserID    string `json:"user_id"`
@@ -82,6 +106,7 @@ type SSEEvent struct {
 	Event      string `json:"event"`
 	Status     string `json:"status,omitempty"`
 	UserID     string `json:"user_id,omitempty"`
+	CardUID    string `json:"card_uid,omitempty"`
 	DeviceID   string `json:"device_id,omitempty"`
 	DeviceName string `json:"device_name,omitempty"`
 	MACAddress string `json:"mac_address,omitempty"`

@@ -125,6 +125,129 @@ func TestDeviceRESTEnrollAndAttendance(t *testing.T) {
 	}
 }
 
+func TestDeviceRESTCardEnrollment(t *testing.T) {
+	database := setupTestDB(t)
+	if _, err := database.Exec("INSERT INTO organizations(name,type) VALUES('Acme','school')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO users(organization_id,full_name,role,uuid) VALUES(1,'Ama','viewer','11111111-1111-4111-8111-111111111111')"); err != nil {
+		t.Fatal(err)
+	}
+	keyHash := hashKey("dev-secret")
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,serial_number,mac_address,api_key_hash,status,last_heartbeat) VALUES(1,'Gate','TAB5-1','AA:AA:AA:AA:AA:AA',?,'active',?)", keyHash, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := database.Exec("INSERT INTO rfid_cards(organization_id,user_id,uid,issue_date) VALUES(1,1,'04A2B3C4','2026-09-28')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cardID, _ := res.LastInsertId()
+
+	hub := NewHub(database, nil)
+	sseCh := hub.SubscribeSSE()
+	defer hub.UnsubscribeSSE(sseCh)
+
+	// 1. Issuing a card to a terminal queues a card.enroll command and the
+	//    card waits as pending.
+	requestID, delivered, err := hub.StartCardEnrollment(1, 1, int(cardID), "04A2B3C4", "11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatalf("start card enrollment: err=%v", err)
+	}
+	if !delivered {
+		t.Fatal("expected delivered=true for device with recent heartbeat")
+	}
+
+	var payloadJSON, cmdType, cmdStatus, cardStatus, personalization string
+	var cmdID int
+	if err := database.QueryRow("SELECT id,command_type,payload_json,status FROM device_commands WHERE device_id=1").Scan(&cmdID, &cmdType, &payloadJSON, &cmdStatus); err != nil {
+		t.Fatal(err)
+	}
+	if cmdType != TypeCardEnroll || cmdStatus != "pending" {
+		t.Fatalf("expected pending %s command, got type=%q status=%q", TypeCardEnroll, cmdType, cmdStatus)
+	}
+	var polled CardEnrollPayload
+	if err := json.Unmarshal([]byte(payloadJSON), &polled); err != nil {
+		t.Fatal(err)
+	}
+	if strconv.Itoa(cmdID) != requestID || polled.RequestID != requestID || polled.CardID != int(cardID) || polled.CardUID != "04A2B3C4" {
+		t.Fatalf("command payload mismatch: cmdID=%d requestID=%s payload=%s", cmdID, requestID, payloadJSON)
+	}
+	if err := database.QueryRow("SELECT status,personalization_status FROM rfid_cards WHERE id=?", cardID).Scan(&cardStatus, &personalization); err != nil {
+		t.Fatal(err)
+	}
+	if cardStatus != "pending" || personalization != "pending" {
+		t.Fatalf("expected pending card, got status=%q personalization=%q", cardStatus, personalization)
+	}
+
+	cardR := gin.New()
+	cardR.POST("/api/v1/devices/:id/card/result", func(c *gin.Context) {
+		c.Set("device_id", 1)
+		c.Set("org_id", 1)
+		hub.CardResultHandler()(c)
+	})
+
+	// 2. The terminal confirms the UID it accepted — the card is issued and
+	//    bound to that terminal (case-insensitive UID match).
+	body := `{"command_id":` + strconv.Itoa(cmdID) + `,"request_id":"` + requestID + `","card_uid":"04a2b3c4","success":true}`
+	req := httptest.NewRequest("POST", "/api/v1/devices/1/card/result", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	cardR.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var boundDevice int
+	if err := database.QueryRow("SELECT status,personalization_status,coalesce(device_id,0) FROM rfid_cards WHERE id=?", cardID).Scan(&cardStatus, &personalization, &boundDevice); err != nil {
+		t.Fatal(err)
+	}
+	if cardStatus != "issued" || personalization != "personalized" || boundDevice != 1 {
+		t.Fatalf("expected issued card bound to device 1, got status=%q personalization=%q device=%d", cardStatus, personalization, boundDevice)
+	}
+	var acked int
+	if err := database.QueryRow("SELECT count(*) FROM device_commands WHERE id=? AND status='acked'", cmdID).Scan(&acked); err != nil || acked != 1 {
+		t.Fatalf("expected command acked, count=%d err=%v", acked, err)
+	}
+
+	select {
+	case evt := <-sseCh:
+		if evt.Event != "card.enrollment_updated" || evt.CardUID != "04A2B3C4" || evt.Status != "issued" {
+			t.Fatalf("unexpected SSE event: %+v", evt)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for card SSE broadcast")
+	}
+
+	// 3. A rejected card is marked failed, stays unbound, and its command is
+	//    acked via the card_id fallback (the result carries no ids).
+	res2, err := database.Exec("INSERT INTO rfid_cards(organization_id,user_id,uid,issue_date,status) VALUES(1,1,'DEADBEEF','2026-09-28','pending')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cardID2, _ := res2.LastInsertId()
+	if _, _, err := hub.StartCardEnrollment(1, 1, int(cardID2), "DEADBEEF", ""); err != nil {
+		t.Fatal(err)
+	}
+	req2 := httptest.NewRequest("POST", "/api/v1/devices/1/card/result", strings.NewReader(`{"card_uid":"DEADBEEF","success":false}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	cardR.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	var bound2 int
+	if err := database.QueryRow("SELECT status,personalization_status,coalesce(device_id,0) FROM rfid_cards WHERE id=?", cardID2).Scan(&cardStatus, &personalization, &bound2); err != nil {
+		t.Fatal(err)
+	}
+	if cardStatus != "failed" || personalization != "failed" || bound2 != 0 {
+		t.Fatalf("expected failed unbound card, got status=%q personalization=%q device=%d", cardStatus, personalization, bound2)
+	}
+	var acked2 int
+	if err := database.QueryRow("SELECT count(*) FROM device_commands WHERE status='pending' AND device_id=1").Scan(&acked2); err != nil || acked2 != 0 {
+		t.Fatalf("expected all commands acked, pending=%d err=%v", acked2, err)
+	}
+}
+
 func TestDeviceAutoProvisioning(t *testing.T) {
 	database := setupTestDB(t)
 	if _, err := database.Exec("INSERT INTO organizations(id, name, type) VALUES(10, 'Test Org', 'school')"); err != nil {
