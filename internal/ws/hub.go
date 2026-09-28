@@ -356,10 +356,11 @@ func (h *Hub) EnrollResultHandler() gin.HandlerFunc {
 		}
 		_, _ = h.db.Exec("UPDATE device_commands SET status='acked',acked_at=? WHERE organization_id=? AND device_id=? AND status IN ('pending','delivered') AND command_type='enroll.start' AND payload_json LIKE ?", now, orgID, deviceID, "%"+p.UserID+"%")
 
-		// Broadcast SSE event
+		// Broadcast SSE event. Status carries the real outcome so pages
+		// don't show "enrolled" for failed/cancelled attempts.
 		h.BroadcastSSE(SSEEvent{
 			Event:    "user.enrollment_updated",
-			Status:   "completed",
+			Status:   fp,
 			UserID:   p.UserID,
 			DeviceID: fmt.Sprintf("dev_%d", deviceID),
 		})

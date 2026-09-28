@@ -35,11 +35,37 @@ type claims struct {
 	Expires       int64
 }
 type eventInput struct {
-	UserID    int    `json:"user_id"`
-	EventID   string `json:"event_id"`
-	Event     string `json:"event"`
-	Timestamp string `json:"timestamp"`
-	Method    string `json:"method"`
+	UserID    json.RawMessage `json:"user_id"`
+	EventID   string          `json:"event_id"`
+	Event     string          `json:"event"`
+	Timestamp string          `json:"timestamp"`
+	Method    string          `json:"method"`
+}
+
+// Devices send user_id as a bare number, a numeric string, or a UUID;
+// empty values yield (0, "", nil) so callers can skip the event instead
+// of failing the whole batch.
+func (in *eventInput) userID() (id int, userUUID string, err error) {
+	raw := strings.TrimSpace(string(in.UserID))
+	if raw == "" || raw == "null" {
+		return 0, "", nil
+	}
+	var s string
+	if raw[0] == '"' {
+		if err := json.Unmarshal(in.UserID, &s); err != nil {
+			return 0, "", err
+		}
+	} else {
+		s = raw
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, "", nil
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		return n, "", nil
+	}
+	return 0, s, nil
 }
 
 func main() {
@@ -115,6 +141,7 @@ func main() {
 	staff.POST("/organizations/:orgId/devices", a.provisionDevice)
 	staff.POST("/organizations/:orgId/devices/:deviceId/revoke", a.revokeDevice)
 	staff.POST("/organizations/:orgId/devices/:deviceId/reprovision", a.reprovisionDevice)
+	staff.POST("/organizations/:orgId/devices/:deviceId/delete", a.deleteDevice)
 	staff.POST("/organizations/:orgId/toggle-status", a.toggleOrgStatus)
 	staff.POST("/organizations/:orgId/logo", a.uploadOrganizationLogo)
 
@@ -124,6 +151,7 @@ func main() {
 	platform.GET("/organisations/:org_id", a.organizationProfilePage)
 	platform.POST("/organisations/:org_id/devices/:device_id/revoke", a.revokeDevice)
 	platform.POST("/organisations/:org_id/devices/:device_id/reprovision", a.reprovisionDevice)
+	platform.POST("/organisations/:org_id/devices/:device_id/delete", a.deleteDevice)
 	platform.POST("/organisations/:org_id/toggle-status", a.toggleOrgStatus)
 	platform.POST("/organisations/:org_id/logo", a.uploadOrganizationLogo)
 
@@ -570,7 +598,11 @@ func nullIfEmpty(v string) any {
 }
 
 func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool, error) {
-	if in.UserID == 0 || in.Event == "" {
+	if strings.TrimSpace(in.Event) == "" {
+		return 0, "", false, fmt.Errorf("user_id and event required")
+	}
+	userID, userUUID, err := in.userID()
+	if err != nil || (userID == 0 && userUUID == "") {
 		return 0, "", false, fmt.Errorf("user_id and event required")
 	}
 	t, err := time.Parse(time.RFC3339, in.Timestamp)
@@ -580,8 +612,13 @@ func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool
 	if in.Method == "" {
 		in.Method = "fingerprint"
 	}
+	if userUUID != "" {
+		if err := a.db.QueryRow("SELECT id FROM users WHERE uuid=? AND organization_id=? AND status='active'", userUUID, org).Scan(&userID); err != nil {
+			return 0, "", false, fmt.Errorf("user not found in device organization")
+		}
+	}
 	var ok int
-	if err = a.db.QueryRow("SELECT count(*) FROM users WHERE id=? AND organization_id=? AND status='active'", in.UserID, org).Scan(&ok); err != nil || ok == 0 {
+	if err = a.db.QueryRow("SELECT count(*) FROM users WHERE id=? AND organization_id=? AND status='active'", userID, org).Scan(&ok); err != nil || ok == 0 {
 		return 0, "", false, fmt.Errorf("user not found in device organization")
 	}
 	status := a.eventStatus(org, in.Event, t)
@@ -591,7 +628,7 @@ func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool
 			return existingID, status, false, nil
 		}
 	}
-	r, err := a.db.Exec("INSERT OR IGNORE INTO attendance_events(organization_id,user_id,device_id,event_id,event_type,timestamp,verification_method,attendance_status) VALUES(?,?,?,?,?,?,?,?)", org, in.UserID, deviceID, nullIfEmpty(in.EventID), in.Event, t.UTC().Format(time.RFC3339), in.Method, status)
+	r, err := a.db.Exec("INSERT OR IGNORE INTO attendance_events(organization_id,user_id,device_id,event_id,event_type,timestamp,verification_method,attendance_status) VALUES(?,?,?,?,?,?,?,?)", org, userID, deviceID, nullIfEmpty(in.EventID), in.Event, t.UTC().Format(time.RFC3339), in.Method, status)
 	if err != nil {
 		return 0, "", false, err
 	}
@@ -602,11 +639,11 @@ func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool
 			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE event_id=? AND organization_id=?", in.EventID, org).Scan(&id)
 		}
 		if id == 0 {
-			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE organization_id=? AND user_id=? AND device_id=? AND timestamp=? AND event_type=?", org, in.UserID, deviceID, t.UTC().Format(time.RFC3339), in.Event).Scan(&id)
+			_ = a.db.QueryRow("SELECT id FROM attendance_events WHERE organization_id=? AND user_id=? AND device_id=? AND timestamp=? AND event_type=?", org, userID, deviceID, t.UTC().Format(time.RFC3339), in.Event).Scan(&id)
 		}
 	}
 	if id > 0 {
-		a.queueSMS(org, int(id), in.UserID, in.Event)
+		a.queueSMS(org, int(id), userID, in.Event)
 	}
 	return id, status, created, nil
 }
@@ -776,7 +813,7 @@ func (a *app) usersPage(c *gin.Context) {
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
-	query := "SELECT id,full_name,email,phone,role,fingerprint_status,status FROM users WHERE organization_id=?"
+	query := "SELECT id,full_name,email,phone,role,fingerprint_status,status,uuid FROM users WHERE organization_id=?"
 	args := []any{a.org(c)}
 	if q != "" {
 		query += " AND (lower(full_name) LIKE ? OR lower(coalesce(email,'')) LIKE ?)"
@@ -788,9 +825,9 @@ func (a *app) usersPage(c *gin.Context) {
 	users := []gin.H{}
 	for rows.Next() {
 		var id int
-		var n, e, p, r, f, s string
-		rows.Scan(&id, &n, &e, &p, &r, &f, &s)
-		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "Fingerprint": f, "Status": s})
+		var n, e, p, r, f, s, u string
+		rows.Scan(&id, &n, &e, &p, &r, &f, &s, &u)
+		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "Fingerprint": f, "Status": s, "UUID": u})
 	}
 	c.HTML(200, "users.html", gin.H{"Title": "Users", "Users": users, "Query": q, "Devices": a.orgDeviceList(c)})
 }
@@ -1604,6 +1641,70 @@ func (a *app) reprovisionDevice(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "reprovision_queued", "device_id": devID})
 }
 
+func (a *app) deleteDevice(c *gin.Context) {
+	orgID, _ := strconv.Atoi(c.Param("org_id"))
+	if orgID == 0 {
+		orgID, _ = strconv.Atoi(c.Param("orgId"))
+	}
+	devID, _ := strconv.Atoi(c.Param("device_id"))
+	if devID == 0 {
+		devID, _ = strconv.Atoi(c.Param("deviceId"))
+	}
+
+	var name, mac string
+	if err := a.db.QueryRow("SELECT name, COALESCE(mac_address, serial_number, '') FROM devices WHERE id=? AND organization_id=?", devID, orgID).Scan(&name, &mac); err != nil {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, fmt.Sprintf("/platform/organisations/%d", orgID))
+			return
+		}
+		c.JSON(404, gin.H{"error": "device not found"})
+		return
+	}
+
+	fail := func(err error) {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, fmt.Sprintf("/platform/organisations/%d", orgID))
+			return
+		}
+		c.JSON(500, gin.H{"error": "failed to delete device: " + err.Error()})
+	}
+
+	tx, err := a.db.Begin()
+	if err != nil {
+		fail(err)
+		return
+	}
+	defer tx.Rollback()
+
+	nCmd, _ := tx.Exec("DELETE FROM device_commands WHERE device_id=?", devID)
+	nEnroll, _ := tx.Exec("DELETE FROM device_enrollments WHERE device_id=?", devID)
+	nCodes, _ := tx.Exec("DELETE FROM device_access_codes WHERE device_id=?", devID)
+	nEvents, _ := tx.Exec("DELETE FROM attendance_events WHERE device_id=?", devID)
+	if _, err := tx.Exec("DELETE FROM devices WHERE id=? AND organization_id=?", devID, orgID); err != nil {
+		fail(err)
+		return
+	}
+
+	cmdCount, _ := nCmd.RowsAffected()
+	enrollCount, _ := nEnroll.RowsAffected()
+	codeCount, _ := nCodes.RowsAffected()
+	eventCount, _ := nEvents.RowsAffected()
+	_, _ = tx.Exec("INSERT INTO audit_logs(organization_id,actor_user_id,action,entity_type,entity_id,before_json) VALUES(?,?,?,?,?,?)",
+		orgID, c.MustGet("claims").(claims).UserID, "delete", "device", devID,
+		fmt.Sprintf(`{"name":%q,"mac_address":%q,"deleted_commands":%d,"deleted_enrollments":%d,"deleted_access_codes":%d,"deleted_attendance_events":%d}`,
+			name, mac, cmdCount, enrollCount, codeCount, eventCount))
+
+	if err := tx.Commit(); err != nil {
+		fail(err)
+		return
+	}
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, fmt.Sprintf("/platform/organisations/%d", orgID))
+		return
+	}
+	c.JSON(200, gin.H{"status": "deleted", "device_id": devID})
+}
+
 func (a *app) toggleOrgStatus(c *gin.Context) {
 	orgID, _ := strconv.Atoi(c.Param("org_id"))
 	if orgID == 0 {
@@ -1825,7 +1926,7 @@ func (a *app) insertEventByUUID(orgID, deviceID int, eventID, userUUID, event, t
 	if err := a.db.QueryRow("SELECT id FROM users WHERE uuid=? AND organization_id=? AND status='active'", userUUID, orgID).Scan(&userID); err != nil {
 		return 0, "", fmt.Errorf("user not found in device organization")
 	}
-	id, status, _, err := a.insertEvent(orgID, deviceID, eventInput{UserID: userID, EventID: eventID, Event: event, Timestamp: timestamp, Method: method})
+	id, status, _, err := a.insertEvent(orgID, deviceID, eventInput{UserID: json.RawMessage(strconv.Itoa(userID)), EventID: eventID, Event: event, Timestamp: timestamp, Method: method})
 	return id, status, err
 }
 

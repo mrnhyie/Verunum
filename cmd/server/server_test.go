@@ -260,6 +260,24 @@ func TestPendingDeviceAndAutoProvisioningFlow(t *testing.T) {
 		t.Fatalf("expected 1 created + 1 deduplicated, got %v", batchResp)
 	}
 
+	// 10b. Mixed batch mirroring real device traffic: garbage events (empty
+	// user_id/event, unknown user) are skipped per-event instead of failing
+	// the batch; numeric-string and UUID user_ids are accepted.
+	w = jsonRequest(t, r, "POST", devPath+"/attendance/batch", "", apiKey, []map[string]any{
+		{"user_id": "", "event_id": "00052B03-A6DC2463-4C12E612", "event": "", "timestamp": "2026-09-11 01:55:25", "method": "fingerprint"},
+		{"user_id": "not-a-user", "event_id": "evt-garbage-1", "event": "clock_in", "timestamp": time.Now().UTC().Format(time.RFC3339)},
+		{"user_id": "1", "event_id": "evt-str-001", "event": "clock_in", "timestamp": time.Now().UTC().Format(time.RFC3339)},
+		{"user_id": adminUUID, "event_id": "evt-uuid-001", "event": "clock_out", "timestamp": time.Now().UTC().Format(time.RFC3339)},
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 mixed batch, got %d: %s", w.Code, w.Body.String())
+	}
+	var mixedResp map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &mixedResp)
+	if mixedResp["created"].(float64) != 2 {
+		t.Fatalf("expected 2 created in mixed batch, got %v", mixedResp)
+	}
+
 	// 11. Requests with a wrong device key are rejected.
 	w = jsonRequest(t, r, "GET", devPath+"/commands", "", "wrong-key", nil)
 	if w.Code != http.StatusUnauthorized {

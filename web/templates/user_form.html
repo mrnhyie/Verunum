@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}} · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260927">
+  <link rel="stylesheet" href="/static/app.css?v=20260928">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -208,9 +208,15 @@
         try {
           const data = JSON.parse(e.data);
           if (data.user_id === personUuid || data.user_id === String(personId)) {
-            fpEl.innerHTML = '<span class="badge-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> enrolled</span>';
-            note.className = 'alert-banner success';
-            note.textContent = 'Fingerprint enrolled successfully on the physical device!';
+            if (data.status === 'enrolled') {
+              fpEl.innerHTML = '<span class="badge-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> enrolled</span>';
+              note.className = 'alert-banner success';
+              note.textContent = 'Fingerprint enrolled successfully on the physical device!';
+            } else {
+              fpEl.innerHTML = '<span class="badge-pill offline">' + (data.status || 'failed') + '</span>';
+              note.className = 'alert-banner error';
+              note.textContent = 'Enrollment did not complete on the device (' + (data.status || 'failed') + '). Try again.';
+            }
             source.close();
           }
         } catch (err) {

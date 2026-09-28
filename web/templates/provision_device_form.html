@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Device Provisioning · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260927">
+  <link rel="stylesheet" href="/static/app.css?v=20260928">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -126,7 +126,7 @@
 
         <div class="countdown-box">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          <span id="countdownDisplay">03:00</span>
+          <span id="countdownDisplay">07:00</span>
         </div>
 
         <div id="statusBanner" style="width: 100%; display: none"></div>
@@ -145,7 +145,7 @@
 
   <script>
     let timerInterval = null;
-    let secondsLeft = 180;
+    let secondsLeft = 420;
     let sseSource = null;
     let currentTargetOrgId = '{{.OrganizationID}}';
     let currentTargetMAC = '';
@@ -227,7 +227,7 @@
       waitContainer.style.display = 'block';
 
       document.querySelector('#waitingMacMsg .mono').textContent = macAddress;
-      secondsLeft = 180;
+      secondsLeft = 420;
       updateCountdown();
 
       clearInterval(timerInterval);

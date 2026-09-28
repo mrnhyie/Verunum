@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}}</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260927">
+  <link rel="stylesheet" href="/static/app.css?v=20260928">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -239,6 +239,11 @@
                   <form method="post" action="/platform/organisations/{{$.Org.ID}}/devices/{{.ID}}/revoke" style="margin: 0">
                     <button type="submit" class="btn-pill btn-pill-danger" style="padding: 6px 14px; font-size: 12px" onclick="return confirm('Revoke credentials for device {{.Name}}?')">
                       Revoke
+                    </button>
+                  </form>
+                  <form method="post" action="/platform/organisations/{{$.Org.ID}}/devices/{{.ID}}/delete" style="margin: 0">
+                    <button type="submit" class="btn-pill btn-pill-danger" style="padding: 6px 14px; font-size: 12px" onclick="return confirm('Permanently delete device {{.Name}}? This removes its API keys, pending commands, enrollments and attendance history. This cannot be undone.')">
+                      Delete
                     </button>
                   </form>
                 </div>

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>People & Staff · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260927">
+  <link rel="stylesheet" href="/static/app.css?v=20260928">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -87,7 +87,7 @@
           </thead>
           <tbody>
             {{range .Users}}
-            <tr data-search="{{.Name}} {{.Email}} {{.Role}} {{.Status}}" data-role="{{.Role}}" data-status="{{.Status}}">
+            <tr data-search="{{.Name}} {{.Email}} {{.Role}} {{.Status}}" data-role="{{.Role}}" data-status="{{.Status}}" data-id="{{.ID}}" data-uuid="{{.UUID}}">
               <td>
                 <div class="person-cell">
                   <div style="width:34px; height:34px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:grid; place-items:center; font-weight:700; color:var(--ink)">
@@ -103,7 +103,7 @@
                 <span class="badge-pill" style="font-size:10px">{{.Role}}</span>
               </td>
               <td>
-                <span class="badge-pill {{if eq .Fingerprint "enrolled"}}active{{else}}offline{{end}}">
+                <span class="badge-pill fp-pill {{if eq .Fingerprint "enrolled"}}active{{else}}offline{{end}}">
                   {{if eq .Fingerprint "enrolled"}}
                   <svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg>
                   Enrolled
@@ -113,7 +113,7 @@
                 </span>
               </td>
               <td>
-                <span class="badge-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
+                <span class="badge-pill status-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
                   <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
                   {{.Status}}
                 </span>
@@ -400,6 +400,58 @@
     modal.addEventListener('close', () => {
       if (sseEnrollSource) sseEnrollSource.close();
       activeEnrollUserUUID = null;
+    });
+
+    // Live row state: reflect enrollments/status changes without a manual reload
+    const fpPillHTML = (fp) => fp === 'enrolled'
+      ? '<span class="badge-pill fp-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> Enrolled</span>'
+      : '<span class="badge-pill fp-pill offline">Not enrolled</span>';
+
+    function applyRowState(row, fp, st) {
+      if (fp) {
+        const fpCell = row.querySelector('.fp-pill');
+        if (fpCell) fpCell.outerHTML = fpPillHTML(fp);
+        const editBtn = row.querySelector('.edit-person');
+        if (editBtn) editBtn.dataset.fingerprint = fp;
+      }
+      if (st) {
+        const stCell = row.querySelector('.status-pill');
+        if (stCell) {
+          const active = st === 'active';
+          stCell.className = 'badge-pill status-pill ' + (active ? 'active' : 'offline');
+          stCell.innerHTML = '<span class="status-dot ' + (active ? 'online' : 'offline') + '"></span> ' + st;
+          row.dataset.status = st;
+        }
+      }
+    }
+
+    const rowByUUID = {};
+    document.querySelectorAll('#peopleTable tbody tr[data-uuid]').forEach(r => { rowByUUID[r.dataset.uuid] = r; });
+
+    const listEvents = new EventSource('/api/v1/events');
+    listEvents.addEventListener('user.enrollment_updated', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const row = rowByUUID[data.user_id];
+        if (row && data.status === 'enrolled') applyRowState(row, 'enrolled', null);
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    // Revalidate rows when restored from the back/forward cache (stale DOM)
+    window.addEventListener('pageshow', (e) => {
+      if (!e.persisted) return;
+      document.querySelectorAll('#peopleTable tbody tr[data-id]').forEach(async (row) => {
+        try {
+          const res = await fetch('/users/' + row.dataset.id + '/status');
+          if (!res.ok) return;
+          const data = await res.json();
+          applyRowState(row, data.fingerprint_status, data.status);
+        } catch (err) {
+          console.error(err);
+        }
+      });
     });
   </script>
 </body>
