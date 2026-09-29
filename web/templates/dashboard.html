@@ -269,7 +269,7 @@
         </div>
         <div>
           <span>Present Today</span>
-          <strong>{{.Present}}</strong>
+          <strong id="metricPresent">{{.Present}}</strong>
           <small>Unique clock-ins recorded</small>
         </div>
       </article>
@@ -280,7 +280,7 @@
         </div>
         <div>
           <span>Late Arrivals</span>
-          <strong>{{.Late}}</strong>
+          <strong id="metricLate">{{.Late}}</strong>
           <small>After configured schedule</small>
         </div>
       </article>
@@ -306,9 +306,9 @@
           </div>
           <a href="/attendance" class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px">All activity →</a>
         </div>
-        <div class="event-list">
+        <div class="event-list" id="recentActivity">
           {{range .Events}}
-          <div class="event-row">
+          <div class="event-row" data-uid="{{.UserID}}">
             <div class="event-avatar" style="border-radius: 50%">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
             </div>
@@ -362,6 +362,80 @@
       </article>
     </section>
   </main>
+  {{end}}
+
+  {{if not .IsStaff}}
+  <script>
+    (() => {
+      const orgID = "{{.OrgID}}";
+      const list = document.getElementById('recentActivity');
+      if (!list) return;
+      const seenUIDs = new Set();
+      list.querySelectorAll('.event-row[data-uid]').forEach(r => seenUIDs.add(r.dataset.uid));
+      const todayUTC = new Date().toISOString().slice(0, 10);
+
+      const bump = (id, delta) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = (parseInt(el.textContent, 10) || 0) + delta;
+      };
+
+      const avatarSVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>';
+
+      const source = new EventSource('/api/v1/events');
+      ['attendance.clock_in', 'attendance.clock_out'].forEach(name => {
+        source.addEventListener(name, e => {
+          let data;
+          try { data = JSON.parse(e.data); } catch { return; }
+          if (data.org_id !== orgID) return;
+
+          const empty = list.querySelector('.empty-state');
+          if (empty) empty.remove();
+
+          const row = document.createElement('div');
+          row.className = 'event-row';
+          row.dataset.uid = data.user_id || '';
+
+          const avatar = document.createElement('div');
+          avatar.className = 'event-avatar';
+          avatar.style.borderRadius = '50%';
+          avatar.innerHTML = avatarSVG;
+
+          const person = document.createElement('div');
+          person.className = 'event-person';
+          const strong = document.createElement('strong');
+          strong.style.color = 'var(--ink)';
+          strong.textContent = data.user_name || '';
+          const span = document.createElement('span');
+          span.style.color = 'var(--muted)';
+          span.textContent = name.replace('attendance.', '') + ' · ' + (data.timestamp || '');
+          person.appendChild(strong);
+          person.appendChild(span);
+
+          const onTime = data.status === 'on_time';
+          const pill = document.createElement('span');
+          pill.className = 'badge-pill ' + (onTime ? 'active' : 'warning');
+          pill.textContent = data.status || '';
+
+          row.appendChild(avatar);
+          row.appendChild(person);
+          row.appendChild(pill);
+          list.prepend(row);
+
+          const rows = list.querySelectorAll('.event-row');
+          for (let i = 10; i < rows.length; i++) rows[i].remove();
+
+          const isToday = (data.timestamp || '').slice(0, 10) === todayUTC;
+          if (isToday) {
+            if (data.status === 'late') bump('metricLate', 1);
+            if (data.user_id && !seenUIDs.has(data.user_id)) {
+              seenUIDs.add(data.user_id);
+              bump('metricPresent', 1);
+            }
+          }
+        });
+      });
+    })();
+  </script>
   {{end}}
 </body>
 </html>

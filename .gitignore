@@ -1,0 +1,4 @@
+.env
+verunum.db
+*.db
+.DS_Store

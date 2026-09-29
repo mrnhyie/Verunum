@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -96,10 +95,12 @@ func (h *Hub) SSEHandler() gin.HandlerFunc {
 				if err != nil {
 					continue
 				}
-				c.Stream(func(w io.Writer) bool {
-					_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Event, string(data))
-					return err == nil
-				})
+				// Write each event exactly once: gin's c.Stream re-invokes its
+				// step function until it returns false, replaying forever.
+				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", evt.Event, string(data)); err != nil {
+					return
+				}
+				c.Writer.Flush()
 			}
 		}
 	}

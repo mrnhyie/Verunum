@@ -106,11 +106,14 @@ type SSEEvent struct {
 	Event      string `json:"event"`
 	Status     string `json:"status,omitempty"`
 	UserID     string `json:"user_id,omitempty"`
+	UserName   string `json:"user_name,omitempty"`
 	CardUID    string `json:"card_uid,omitempty"`
 	DeviceID   string `json:"device_id,omitempty"`
 	DeviceName string `json:"device_name,omitempty"`
 	MACAddress string `json:"mac_address,omitempty"`
 	OrgID      string `json:"org_id,omitempty"`
+	Method     string `json:"method,omitempty"`
+	Timestamp  string `json:"timestamp,omitempty"`
 	Message    string `json:"message,omitempty"`
 }
 

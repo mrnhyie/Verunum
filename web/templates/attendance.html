@@ -58,7 +58,7 @@
         </div>
         <div>
           <span>Present</span>
-          <strong>{{.PresentCount}}</strong>
+          <strong id="metricPresent">{{.PresentCount}}</strong>
           <small>Distinct people scanned</small>
         </div>
       </article>
@@ -80,7 +80,7 @@
         </div>
         <div>
           <span>Late arrivals</span>
-          <strong>{{.LateCount}}</strong>
+          <strong id="metricLate">{{.LateCount}}</strong>
           <small>Past the grace window</small>
         </div>
       </article>
@@ -91,7 +91,7 @@
         </div>
         <div>
           <span>Events logged</span>
-          <strong>{{.EventCount}}</strong>
+          <strong id="metricEvents">{{.EventCount}}</strong>
           <small>Verified scans today</small>
         </div>
       </article>
@@ -136,7 +136,7 @@
             <span class="calendar-day-name calendar-day-abbr">{{$d.Weekday}}</span>
             <span class="calendar-day-num">{{$d.Day}}</span>
             <span class="calendar-day-bar"><i class="calendar-fill"></i></span>
-            <small>{{$d.Count}}{{if $d.ShowMonth}} · {{$d.Month}}{{end}}</small>
+            <small><span class="day-count">{{$d.Count}}</span>{{if $d.ShowMonth}} · {{$d.Month}}{{end}}</small>
           </a>
           {{end}}
         </div>
@@ -199,7 +199,7 @@
           </thead>
           <tbody>
             {{range .Events}}
-            <tr data-search="{{.User}} {{.Device}} {{.Event}} {{.Status}}">
+            <tr data-uid="{{.UserID}}" data-search="{{.User}} {{.Device}} {{.Event}} {{.Status}}">
               <td><strong style="color:var(--ink)">{{.User}}</strong></td>
               <td>{{.Device}}</td>
               <td><span class="badge-pill">{{.Event}}</span></td>
@@ -232,5 +232,80 @@
       });
     });
   </script>
+
+  {{if and .SelectedIsToday (ne .View "absent") (not .Query) (not .UserFilter)}}
+  <script>
+    (() => {
+      const orgID = "{{.OrgID}}";
+      const tbody = document.querySelector('#attendanceTable tbody');
+      const seenUIDs = new Set();
+      tbody.querySelectorAll('tr[data-uid]').forEach(r => seenUIDs.add(r.dataset.uid));
+
+      const bump = (id, delta) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = (parseInt(el.textContent, 10) || 0) + delta;
+      };
+
+      const source = new EventSource('/api/v1/events');
+      ['attendance.clock_in', 'attendance.clock_out'].forEach(name => {
+        source.addEventListener(name, e => {
+          let data;
+          try { data = JSON.parse(e.data); } catch { return; }
+          if (data.org_id !== orgID) return;
+
+          const empty = tbody.querySelector('tr .table-empty')?.closest('tr');
+          if (empty) empty.remove();
+
+          const tr = document.createElement('tr');
+          tr.dataset.uid = data.user_id || '';
+          tr.dataset.search = [data.user_name, data.device_name, name.replace('attendance.', ''), data.status].join(' ');
+
+          const cells = [
+            { html: '<strong style="color:var(--ink)"></strong>', text: data.user_name },
+            { text: data.device_name },
+            { html: '<span class="badge-pill"></span>', text: name.replace('attendance.', '') },
+            { text: data.timestamp || '', style: 'font-size:12px' },
+            { text: data.method || '', style: 'font-size:12px' },
+          ];
+          cells.forEach(spec => {
+            const td = document.createElement('td');
+            if (spec.style) td.style.cssText = spec.style;
+            if (spec.html) {
+              td.innerHTML = spec.html;
+              td.firstChild.textContent = spec.text || '';
+            } else {
+              td.textContent = spec.text || '';
+            }
+            tr.appendChild(td);
+          });
+
+          const tdStatus = document.createElement('td');
+          const onTime = data.status === 'on_time';
+          const pill = document.createElement('span');
+          pill.className = 'badge-pill ' + (onTime ? 'active' : 'warning');
+          const dot = document.createElement('span');
+          dot.className = 'status-dot ' + (onTime ? 'online' : 'offline');
+          pill.appendChild(dot);
+          pill.appendChild(document.createTextNode(data.status || ''));
+          tdStatus.appendChild(pill);
+          tr.appendChild(tdStatus);
+
+          const q = document.getElementById('attendanceSearch').value.toLowerCase();
+          if (q) tr.hidden = !tr.dataset.search.toLowerCase().includes(q);
+          tbody.prepend(tr);
+
+          bump('metricEvents', 1);
+          if (data.status === 'late') bump('metricLate', 1);
+          if (data.user_id && !seenUIDs.has(data.user_id)) {
+            seenUIDs.add(data.user_id);
+            bump('metricPresent', 1);
+          }
+          const todayCount = document.querySelector('.calendar-day.is-today .day-count');
+          if (todayCount) todayCount.textContent = (parseInt(todayCount.textContent, 10) || 0) + 1;
+        });
+      });
+    })();
+  </script>
+  {{end}}
 </body>
 </html>

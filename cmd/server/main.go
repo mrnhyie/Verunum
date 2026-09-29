@@ -71,6 +71,7 @@ func (in *eventInput) userID() (id int, userUUID string, err error) {
 }
 
 func main() {
+	loadDotEnv(".env")
 	// Setup flags without the broken addr flag
 	file := flag.String("db", "verunum.db", "SQLite database path")
 	flag.Parse()
@@ -699,9 +700,31 @@ func (a *app) insertEvent(org, deviceID int, in eventInput) (int64, string, bool
 		}
 	}
 	if id > 0 {
-		a.queueSMS(org, int(id), userID, in.Event)
+		a.queueSMS(org, int(id), userID, in.Event, status)
+	}
+	if created {
+		a.broadcastAttendance(org, deviceID, userID, in.Event, in.Method, t.UTC().Format(time.RFC3339), status)
 	}
 	return id, status, created, nil
+}
+
+// broadcastAttendance pushes a live-update event to browser dashboards so
+// tables and counters refresh without a manual reload.
+func (a *app) broadcastAttendance(org, deviceID, userID int, event, method, timestamp, status string) {
+	var name, userUUID, deviceName string
+	_ = a.db.QueryRow("SELECT full_name,uuid FROM users WHERE id=? AND organization_id=?", userID, org).Scan(&name, &userUUID)
+	_ = a.db.QueryRow("SELECT name FROM devices WHERE id=? AND organization_id=?", deviceID, org).Scan(&deviceName)
+	a.hub.BroadcastSSE(ws.SSEEvent{
+		Event:      "attendance." + event,
+		Status:     status,
+		UserID:     userUUID,
+		UserName:   name,
+		DeviceID:   fmt.Sprintf("dev_%d", deviceID),
+		DeviceName: deviceName,
+		Method:     method,
+		Timestamp:  timestamp,
+		OrgID:      strconv.Itoa(org),
+	})
 }
 func (a *app) eventStatus(org int, event string, t time.Time) string {
 	if event != "clock_in" {
@@ -853,15 +876,15 @@ func (a *app) dashboard(c *gin.Context) {
 	a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, today+"%").Scan(&present)
 	a.db.QueryRow("SELECT count(*) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ? AND attendance_status='late'", org, today+"%").Scan(&late)
 	a.db.QueryRow("SELECT count(*) FROM devices WHERE organization_id=? AND status='online'", org).Scan(&online)
-	rows, _ := a.db.Query("SELECT u.full_name,e.event_type,e.timestamp,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? ORDER BY e.id DESC LIMIT 10", org)
+	rows, _ := a.db.Query("SELECT u.uuid,u.full_name,e.event_type,e.timestamp,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? ORDER BY e.id DESC LIMIT 10", org)
 	defer rows.Close()
 	events := []gin.H{}
 	for rows.Next() {
-		var n, ev, t, s string
-		rows.Scan(&n, &ev, &t, &s)
-		events = append(events, gin.H{"Name": n, "Event": ev, "Time": t, "Status": s})
+		var uuid, n, ev, t, s string
+		rows.Scan(&uuid, &n, &ev, &t, &s)
+		events = append(events, gin.H{"UserID": uuid, "Name": n, "Event": ev, "Time": t, "Status": s})
 	}
-	c.HTML(200, "dashboard.html", gin.H{"Title": "Dashboard", "Present": present, "Late": late, "Online": online, "Events": events})
+	c.HTML(200, "dashboard.html", gin.H{"Title": "Dashboard", "Present": present, "Late": late, "Online": online, "Events": events, "OrgID": org})
 }
 
 // roleSlug normalises a role label ("Gate Marshall") to the value stored on
@@ -1317,7 +1340,7 @@ func (a *app) attendancePage(c *gin.Context) {
 	if _, err := time.Parse("2006-01-02", selected); err != nil {
 		selected = time.Now().Format("2006-01-02")
 	}
-	q := "SELECT e.id,u.full_name,d.name,e.event_type,e.timestamp,e.verification_method,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id JOIN devices d ON d.id=e.device_id WHERE e.organization_id=? AND e.timestamp LIKE ?"
+	q := "SELECT e.id,u.uuid,u.full_name,d.name,e.event_type,e.timestamp,e.verification_method,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id JOIN devices d ON d.id=e.device_id WHERE e.organization_id=? AND e.timestamp LIKE ?"
 	args := []any{org, selected + "%"}
 	if userID := c.Query("user_id"); userID != "" {
 		q += " AND e.user_id=?"
@@ -1333,9 +1356,9 @@ func (a *app) attendancePage(c *gin.Context) {
 	items := []gin.H{}
 	for rows.Next() {
 		var id int
-		var u, d, e, t, m, s string
-		rows.Scan(&id, &u, &d, &e, &t, &m, &s)
-		items = append(items, gin.H{"ID": id, "User": u, "Device": d, "Event": e, "Time": t, "Method": m, "Status": s})
+		var uuid, u, d, e, t, m, s string
+		rows.Scan(&id, &uuid, &u, &d, &e, &t, &m, &s)
+		items = append(items, gin.H{"ID": id, "UserID": uuid, "User": u, "Device": d, "Event": e, "Time": t, "Method": m, "Status": s})
 	}
 	absent := []gin.H{}
 	absentRows, _ := a.db.Query("SELECT id,full_name,coalesce(email,'') FROM users u WHERE organization_id=? AND status='active' AND NOT EXISTS (SELECT 1 FROM attendance_events e WHERE e.organization_id=u.organization_id AND e.user_id=u.id AND e.timestamp LIKE ?) ORDER BY full_name", org, selected+"%")
@@ -1408,6 +1431,7 @@ func (a *app) attendancePage(c *gin.Context) {
 		"PrevDate": base.AddDate(0, 0, -7).Format("2006-01-02"),
 		"NextDate": base.AddDate(0, 0, 7).Format("2006-01-02"),
 		"View":     view, "Query": c.Query("q"),
+		"SelectedIsToday": selected == today, "OrgID": org, "UserFilter": c.Query("user_id"),
 	})
 }
 func (a *app) devicesStatus(c *gin.Context) {
@@ -2359,22 +2383,6 @@ func (a *app) audit(c *gin.Context, action, typ string, id int64, before string,
 	b, _ := json.Marshal(after)
 	_, _ = a.db.Exec("INSERT INTO audit_logs(organization_id,actor_user_id,action,entity_type,entity_id,before_json,after_json) VALUES(?,?,?,?,?,?,?)", x.OrgID, x.UserID, action, typ, id, before, string(b))
 }
-func (a *app) queueSMS(org, eventID, userID int, event string) {
-	var phone string
-	if a.db.QueryRow("SELECT phone FROM users WHERE id=? AND organization_id=?", userID, org).Scan(&phone) != nil || phone == "" {
-		return
-	}
-	body := "Attendance update: " + event
-	_, _ = a.db.Exec("INSERT INTO sms_logs(organization_id,attendance_event_id,recipient_phone,body) VALUES(?,?,?,?)", org, eventID, phone, body)
-}
-func (a *app) smsWorker() {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		_, _ = a.db.Exec("UPDATE sms_logs SET status='sent',sent_at=? WHERE id IN (SELECT id FROM sms_logs WHERE status='queued' ORDER BY id LIMIT 20)", time.Now().UTC().Format(time.RFC3339))
-	}
-}
-
 func (a *app) insertEventByUUID(orgID, deviceID int, eventID, userUUID, event, timestamp, method string) (int64, string, error) {
 	var userID int
 	if err := a.db.QueryRow("SELECT id FROM users WHERE uuid=? AND organization_id=? AND status='active'", userUUID, orgID).Scan(&userID); err != nil {
