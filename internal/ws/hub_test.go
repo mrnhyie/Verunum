@@ -415,3 +415,111 @@ func TestHeartbeatBasedConnectivity(t *testing.T) {
 		t.Fatal("expected device 2 not in connected IDs")
 	}
 }
+
+func TestHelloIncludesWorkSchedule(t *testing.T) {
+	database := setupTestDB(t)
+	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO attendance_rules(organization_id,working_hours,late_threshold_minutes) VALUES(1,'{"start":"07:30","end":"16:45"}',10)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status) VALUES(1,'Gate','AA:AA:AA:AA:AA:AA',?,'active')", hashKey("dev-secret")); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := NewHub(database, nil)
+	r := gin.New()
+	r.POST("/api/v1/devices/hello", hub.HelloHandler())
+
+	post := func(body string) map[string]any {
+		req := httptest.NewRequest("POST", "/api/v1/devices/hello", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	resp := post(`{"mac_address":"AA:AA:AA:AA:AA:AA","device_name":"Gate","protocol_version":1,"api_key":"dev-secret"}`)
+	schedule, ok := resp["work_schedule"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected work_schedule object, got %v", resp["work_schedule"])
+	}
+	if schedule["clock_in"] != "07:30" || schedule["clock_out"] != "16:45" || schedule["late_threshold_minutes"] != float64(10) {
+		t.Fatalf("unexpected work schedule: %v", schedule)
+	}
+}
+
+func TestUserSyncCommandsFanOut(t *testing.T) {
+	database := setupTestDB(t)
+	if _, err := database.Exec("INSERT INTO organizations(id,name,type) VALUES(1,'Acme','school')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO users(organization_id,full_name,phone,role,status,uuid) VALUES(1,'Ama Mensah','+233201234567','staff','active','11111111-1111-4111-8111-111111111111')"); err != nil {
+		t.Fatal(err)
+	}
+	// Two live devices and one revoked: only the live pair gets command rows.
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status) VALUES(1,'Gate','AA:AA:AA:AA:AA:AA',?,'active')", hashKey("k1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status) VALUES(1,'Canteen','BB:BB:BB:BB:BB:BB',?,'offline')", hashKey("k2")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO devices(organization_id,name,mac_address,api_key_hash,status) VALUES(1,'Old','CC:CC:CC:CC:CC:CC',?,'revoked')", hashKey("k3")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec("INSERT INTO rfid_cards(organization_id,user_id,uid,issue_date,status) VALUES(1,1,'04A2B3C4','2026-09-30','issued')"); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := NewHub(database, nil)
+	uuid := "11111111-1111-4111-8111-111111111111"
+
+	// 1. Update fans out to both live devices with the authoritative record.
+	queued, err := hub.QueueUserUpdate(1, 1, uuid)
+	if err != nil || queued != 2 {
+		t.Fatalf("expected 2 queued user.update commands, got %d err=%v", queued, err)
+	}
+	var payloadJSON, cmdType string
+	if err := database.QueryRow("SELECT command_type,payload_json FROM device_commands WHERE device_id=1").Scan(&cmdType, &payloadJSON); err != nil {
+		t.Fatal(err)
+	}
+	if cmdType != TypeUserUpdate {
+		t.Fatalf("expected %s, got %q", TypeUserUpdate, cmdType)
+	}
+	var upd UserUpdatePayload
+	if err := json.Unmarshal([]byte(payloadJSON), &upd); err != nil {
+		t.Fatal(err)
+	}
+	if upd.UserID != uuid || upd.FullName != "Ama Mensah" || upd.Status != "active" ||
+		len(upd.CardUIDs) != 1 || upd.CardUIDs[0] != "04A2B3C4" || upd.RequestID == "" {
+		t.Fatalf("unexpected user.update payload: %+v", upd)
+	}
+
+	// 2. Delete fans out with just the user id.
+	queued, err = hub.QueueUserDelete(1, uuid)
+	if err != nil || queued != 2 {
+		t.Fatalf("expected 2 queued user.delete commands, got %d err=%v", queued, err)
+	}
+	if err := database.QueryRow("SELECT payload_json FROM device_commands WHERE device_id=2 AND command_type=?", TypeUserDelete).Scan(&payloadJSON); err != nil {
+		t.Fatal(err)
+	}
+	var del UserDeletePayload
+	if err := json.Unmarshal([]byte(payloadJSON), &del); err != nil {
+		t.Fatal(err)
+	}
+	if del.UserID != uuid || del.RequestID == "" {
+		t.Fatalf("unexpected user.delete payload: %+v", del)
+	}
+	var revokedCount int
+	if err := database.QueryRow("SELECT count(*) FROM device_commands dc JOIN devices d ON d.id=dc.device_id WHERE d.status='revoked'").Scan(&revokedCount); err != nil || revokedCount != 0 {
+		t.Fatalf("revoked device must not receive commands, count=%d err=%v", revokedCount, err)
+	}
+}

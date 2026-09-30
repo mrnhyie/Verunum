@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}}</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -43,11 +43,8 @@
       <div>
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
           <h1 style="margin: 0">{{.Org.Name}}</h1>
-          <span class="badge-pill {{if eq .Org.Status "active"}}active{{else}}offline{{end}}">
-            <span class="status-dot {{if eq .Org.Status "active"}}online{{else}}offline{{end}}"></span>
-            {{.Org.Status}}
-          </span>
-          <span class="badge-pill">{{.Org.Type}}</span>
+          {{if eq .Org.Status "active"}}<span class="cell-flag positive"><span class="live-dot"></span>{{.Org.Status}}</span>{{else}}<span class="cell-flag muted">{{.Org.Status}}</span>{{end}}
+          <span class="cell-flag muted">{{.Org.Type}}</span>
         </div>
         <div class="org-meta-badges">
           <span class="contact-chip" title="Primary Administrator">
@@ -187,7 +184,7 @@
           <h2 style="margin: 0">Hardware Inventory</h2>
           <p class="subtle" style="margin: 2px 0 0; font-size: 12px; color: var(--muted)">Registered terminals and live WebSocket connection statuses.</p>
         </div>
-        <span class="badge-pill">{{len .Devices}} Units</span>
+        <span class="cell-flag muted">{{len .Devices}} Units</span>
       </div>
 
       <div style="overflow-x: auto">
@@ -221,10 +218,7 @@
                 </span>
               </td>
               <td>
-                <span class="badge-pill {{if .IsOnline}}online{{else}}offline{{end}}">
-                  <span class="status-dot {{if .IsOnline}}online{{else}}offline{{end}}"></span>
-                  {{if .IsOnline}}Online{{else}}Offline{{end}}
-                </span>
+                {{if .IsOnline}}<span class="cell-flag positive"><span class="live-dot"></span>Online</span>{{else}}<span class="cell-flag muted">Offline</span>{{end}}
               </td>
               <td style="font-size: 12px">
                 {{if .LastSeen}}{{.LastSeen}}{{else}}Never connected{{end}}

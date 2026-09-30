@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Attendance · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -53,8 +53,8 @@
 
     <section class="metric-grid">
       <article class="mono-card metric-card">
-        <div class="metric-icon mint">
-          <svg viewBox="0 0 24 24"><path d="M15 19a6 6 0 0 0-12 0"/><circle cx="9" cy="8" r="3.2"/><path d="m16.5 12.5 2 2 4-4"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         </div>
         <div>
           <span>Present</span>
@@ -64,8 +64,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon rose">
-          <svg viewBox="0 0 24 24"><path d="M15 19a6 6 0 0 0-12 0"/><circle cx="9" cy="8" r="3.2"/><path d="m16.5 12.5 4 4M20.5 12.5l-4 4"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M14.59 8L12 10.59 9.41 8 8 9.41 10.59 12 8 14.59 9.41 16 12 13.41 14.59 16 16 14.59 13.41 12 16 9.41 14.59 8zM12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
         </div>
         <div>
           <span>Absent</span>
@@ -75,8 +75,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon peach">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
         </div>
         <div>
           <span>Late arrivals</span>
@@ -86,8 +86,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon violet">
-          <svg viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 4 12L16 12h5"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
         </div>
         <div>
           <span>Events logged</span>
@@ -105,7 +105,7 @@
             <strong>{{.ActiveDays}}</strong>
             <span>active days this week</span>
           </div>
-          <span class="streak-chip">
+          <span class="tick">
             <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
             {{.ActiveDays}} of {{len .Days}} days completed
           </span>
@@ -202,14 +202,11 @@
             <tr data-uid="{{.UserID}}" data-search="{{.User}} {{.Device}} {{.Event}} {{.Status}}">
               <td><strong style="color:var(--ink)">{{.User}}</strong></td>
               <td>{{.Device}}</td>
-              <td><span class="badge-pill">{{.Event}}</span></td>
+              <td><span class="cell-flag muted">{{.Event}}</span></td>
               <td style="font-size:12px">{{.Time}}</td>
               <td style="font-size:12px">{{.Method}}</td>
               <td>
-                <span class="badge-pill {{if eq .Status "on_time"}}active{{else}}warning{{end}}">
-                  <span class="status-dot {{if eq .Status "on_time"}}online{{else}}offline{{end}}"></span>
-                  {{.Status}}
-                </span>
+                {{if eq .Status "on_time"}}<span class="cell-flag positive">{{.Status}}</span>{{else}}<span class="cell-flag muted">{{.Status}}</span>{{end}}
               </td>
             </tr>
             {{else}}
@@ -263,7 +260,7 @@
           const cells = [
             { html: '<strong style="color:var(--ink)"></strong>', text: data.user_name },
             { text: data.device_name },
-            { html: '<span class="badge-pill"></span>', text: name.replace('attendance.', '') },
+            { html: '<span class="cell-flag muted"></span>', text: name.replace('attendance.', '') },
             { text: data.timestamp || '', style: 'font-size:12px' },
             { text: data.method || '', style: 'font-size:12px' },
           ];
@@ -280,14 +277,10 @@
           });
 
           const tdStatus = document.createElement('td');
-          const onTime = data.status === 'on_time';
-          const pill = document.createElement('span');
-          pill.className = 'badge-pill ' + (onTime ? 'active' : 'warning');
-          const dot = document.createElement('span');
-          dot.className = 'status-dot ' + (onTime ? 'online' : 'offline');
-          pill.appendChild(dot);
-          pill.appendChild(document.createTextNode(data.status || ''));
-          tdStatus.appendChild(pill);
+          const flag = document.createElement('span');
+          flag.className = 'cell-flag ' + (data.status === 'on_time' ? 'positive' : 'muted');
+          flag.textContent = data.status || '';
+          tdStatus.appendChild(flag);
           tr.appendChild(tdStatus);
 
           const q = document.getElementById('attendanceSearch').value.toLowerCase();

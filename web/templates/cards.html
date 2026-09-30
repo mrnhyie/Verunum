@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>RFID Cards · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -91,15 +91,13 @@
               </td>
               <td>
                 {{if eq .Status "issued"}}
-                <span class="badge-pill active">{{.Status}}</span>
-                {{else if eq .Status "pending"}}
-                <span class="badge-pill warning">pending</span>
+                <span class="cell-flag positive">{{.Status}}</span>
                 {{else if eq .Status "failed"}}
-                <span class="badge-pill danger">failed</span>
+                <span class="cell-flag negative">failed</span>
                 {{else if eq .Status "cancelled"}}
-                <span class="badge-pill danger">cancelled</span>
+                <span class="cell-flag negative">cancelled</span>
                 {{else}}
-                <span class="badge-pill offline">{{.Status}}</span>
+                <span class="cell-flag muted">{{.Status}}</span>
                 {{end}}
               </td>
               <td>

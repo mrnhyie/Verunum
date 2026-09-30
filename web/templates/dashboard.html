@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}} · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -14,10 +14,6 @@
     </a>
     <span class="breadcrumb">{{if .IsStaff}}/ Platform Administration{{else}}/ Attendance Intelligence{{end}}</span>
     <div class="topbar-actions">
-      <label class="section-search" style="margin-bottom:0; border-bottom:0; padding-left:14px; border:1px solid var(--border); border-radius:var(--radius-pill)">
-        <svg viewBox="0 0 24 24" style="margin:0"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
-        <input placeholder="Search workspaces..." style="padding:8px 14px">
-      </label>
       <button class="icon-button" aria-label="Notifications" style="color:var(--muted)">
         <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
       </button>
@@ -81,8 +77,8 @@
 
     <section class="metric-grid">
       <article class="mono-card metric-card">
-        <div class="metric-icon mint">
-          <svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v2zm-2-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm4 12h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2z"/></svg>
         </div>
         <div>
           <span>Organisations</span>
@@ -92,8 +88,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon violet">
-          <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 10h-4v-7h4v7z"/></svg>
         </div>
         <div>
           <span>Provisioned Devices</span>
@@ -103,8 +99,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon peach">
-          <svg viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5l-4-4V4h8v3.5l-4 4z"/></svg>
         </div>
         <div>
           <span>Pending Activation</span>
@@ -121,10 +117,7 @@
           <h2>Platform Growth</h2>
           <p style="margin: 2px 0 0; color: var(--muted); font-size: 12px">Every clock-in recorded across all customer workspaces, last six months</p>
         </div>
-        <span class="growth-stamp">
-          <svg viewBox="0 0 24 24" style="width:14px; height:14px"><path d="M3 17l6-6 4 4 8-8M21 7v5h-5"/></svg>
-          Live
-        </span>
+        <span class="cell-flag positive"><span class="live-dot"></span>Live</span>
       </div>
 
       <div class="growth-figures">
@@ -187,7 +180,7 @@
             <strong style="color: var(--ink); font-size: 14px">{{.Name}}</strong>
             <span style="color: var(--muted)">{{.Type}} · {{if .Admin}}{{.Admin}}{{else}}Admin pending{{end}}</span>
           </div>
-          <span class="badge-pill" style="margin-left: auto">
+          <span class="cell-flag muted" style="margin-left: auto">
             {{.Devices}} devices
           </span>
         </div>
@@ -264,8 +257,8 @@
 
     <section class="metric-grid">
       <article class="mono-card metric-card">
-        <div class="metric-icon mint">
-          <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         </div>
         <div>
           <span>Present Today</span>
@@ -275,8 +268,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon peach">
-          <svg viewBox="0 0 24 24"><path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
         </div>
         <div>
           <span>Late Arrivals</span>
@@ -286,8 +279,8 @@
       </article>
 
       <article class="mono-card metric-card">
-        <div class="metric-icon violet">
-          <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg>
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 10h-4v-7h4v7z"/></svg>
         </div>
         <div>
           <span>Terminals Online</span>
@@ -316,9 +309,7 @@
               <strong style="color: var(--ink)">{{.Name}}</strong>
               <span style="color: var(--muted)">{{.Event}} · {{.Time}}</span>
             </div>
-            <span class="badge-pill {{if eq .Status "on_time"}}active{{else}}warning{{end}}">
-              {{.Status}}
-            </span>
+            {{if eq .Status "on_time"}}<span class="cell-flag positive">{{.Status}}</span>{{else}}<span class="cell-flag muted">{{.Status}}</span>{{end}}
           </div>
           {{else}}
           <div class="empty-state">
@@ -413,7 +404,7 @@
 
           const onTime = data.status === 'on_time';
           const pill = document.createElement('span');
-          pill.className = 'badge-pill ' + (onTime ? 'active' : 'warning');
+          pill.className = 'cell-flag ' + (onTime ? 'positive' : 'muted');
           pill.textContent = data.status || '';
 
           row.appendChild(avatar);

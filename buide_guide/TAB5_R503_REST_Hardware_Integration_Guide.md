@@ -133,6 +133,11 @@ Content-Type: application/json
   "api_key": "dev_sec_<one-time-secret>",
   "protocol_version": 1,
   "firmware_version": "1.0.0",
+  "work_schedule": {
+    "clock_in": "08:00",
+    "clock_out": "17:00",
+    "late_threshold_minutes": 15
+  },
   "message": "Store this API key securely. It is returned only during provisioning."
 }
 ```
@@ -156,9 +161,16 @@ HTTP/1.1 200 OK
   "device_id": "dev_123",
   "organization_id": 1,
   "protocol_version": 1,
+  "work_schedule": {
+    "clock_in": "08:00",
+    "clock_out": "17:00",
+    "late_threshold_minutes": 15
+  },
   "message": "Connected successfully."
 }
 ```
+
+**`work_schedule`** is the organisation's configured work-hours setting, included in **both** hello responses so the terminal can display schedule information and reason about clock-in/clock-out locally. `clock_in`/`clock_out` are local wall-clock `HH:MM` strings; `late_threshold_minutes` is the grace period the backend adds to `clock_in` when computing `attendance_status`. Cache it after hello; it changes only when an administrator edits work hours.
 
 ---
 
@@ -223,8 +235,8 @@ HTTP/1.1 200 OK
 
 - Recommended polling interval: **every 2–5 seconds** during normal operation, with backoff when the network is unavailable.
 - Pending commands remain on the backend until the device acknowledges them. This is what allows an offline device to receive a command after it comes back online.
-- Two command types exist: `enroll.start` (fingerprint enrollment — see §9) and `card.enroll` (RFID card sync — see §9a).
-- The `payload.request_id` field equals the command `id` as a string — use it to correlate the result you report back.
+- Four command types exist: `enroll.start` (fingerprint enrollment — see §9), `card.enroll` (RFID card sync — see §9a), `user.update` and `user.delete` (roster synchronization — see §9b).
+- The `payload.request_id` field equals the command `id` as a string — use it to correlate the result you report back. `user.update` / `user.delete` carry no result endpoint: apply them locally, then ack (§8).
 
 ---
 
@@ -369,6 +381,67 @@ Send at least one identifier (`command_id`, `request_id`, `card_id`, or `card_ui
 
 ---
 
+## 9b. User Roster Synchronization (`user.update` / `user.delete`)
+
+The TAB5 keeps a **local roster** of people it can identify (fingerprint slots, card UIDs, names). When an administrator edits or deactivates a person on the dashboard, the backend fans a command out to **every** device in the organisation, so all terminals converge on the platform record — including terminals that were offline at the time (their commands stay pending until they poll).
+
+These commands are **fire-and-apply**: there is no result endpoint. Apply the change to the local roster, then acknowledge the command (§8).
+
+### `user.update` — replace the local record
+
+```json
+{
+  "id": 43,
+  "command_type": "user.update",
+  "payload": {
+    "request_id": "43",
+    "user_id": "user-uuid",
+    "full_name": "Ama Mensah",
+    "phone": "+233201234567",
+    "role": "staff",
+    "status": "active",
+    "card_uids": ["04A2B3C4", "DEADBEEF"]
+  },
+  "created_at": "2026-09-30T10:00:00Z"
+}
+```
+
+| Field | Notes |
+|---|---|
+| `request_id` | The command `id` as a string. |
+| `user_id` | UUID — the stable identity across all devices. |
+| `full_name` | Current display name. |
+| `phone` | Current phone number (may be empty). |
+| `role` | Organisation role string. |
+| `status` | `active` or `inactive`. |
+| `card_uids` | **The complete, authoritative list** of card UIDs currently bound to this person. |
+
+**Apply semantics — replace, not merge:**
+
+- Overwrite the local record's name/phone/role from the payload.
+- **`card_uids` replaces the entire local card set for this user.** A UID present locally but absent from the list must be **removed** (this is how a lost/replaced card is invalidated on every terminal); a UID in the list but absent locally must be **added**.
+- `status: "inactive"`: keep the record but refuse it for attendance (the platform rejects it too).
+
+### `user.delete` — remove the local record
+
+```json
+{
+  "id": 44,
+  "command_type": "user.delete",
+  "payload": {
+    "request_id": "44",
+    "user_id": "user-uuid"
+  },
+  "created_at": "2026-09-30T10:05:00Z"
+}
+```
+
+Remove the person from the local roster entirely (fingerprint slot, card bindings, displayed name). The platform soft-deletes — if the person is reactivated later, a fresh `user.update` re-adds them.
+
+> If a `user.delete` arrives for a user the device does not know, ack it anyway — it is already satisfied.
+
+---
+
 ## 10. Attendance
 
 The TAB5 performs fingerprint matching locally. When a fingerprint is matched to a Verunum user, the terminal sends an attendance event:
@@ -404,11 +477,12 @@ HTTP/1.1 201 Created
 
 {
   "id": 501,
-  "attendance_status": "on_time"
+  "attendance_status": "on_time",
+  "user_name": "Ama Mensah"
 }
 ```
 
-`attendance_status` is computed by the backend (`on_time` / `late` for `clock_in` based on the organisation's attendance rules).
+`attendance_status` is computed by the backend (`on_time` / `late` for `clock_in` based on the organisation's attendance rules). `user_name` is the person's display name — **display it on the terminal screen** so the user gets immediate confirmation of who was recognised. It may be an empty string in the unlikely case the user record was just removed; fall back to whatever identity the device matched locally.
 
 ---
 
@@ -515,9 +589,11 @@ heartbeat every 30s
   │
   ├──► poll commands (every 2–5s)
   │      ├─ enroll.start ──► R503 capture ──► POST enrollment/result ──► ack command
-  │      └─ card.enroll  ──► read card UID ──► POST card/result ──► ack command
+  │      ├─ card.enroll  ──► read card UID ──► POST card/result ──► ack command
+  │      ├─ user.update  ──► replace local roster record ──► ack command
+  │      └─ user.delete  ──► remove local roster record ──► ack command
   │
-  └──► fingerprint scan ──► local match ──► POST attendance ──► 201
+  └──► fingerprint scan ──► local match ──► POST attendance ──► 201 (+ user_name on screen)
 ```
 
 ---
@@ -634,12 +710,16 @@ READY
 - [ ] Implement enrollment result reporting (`POST /enrollment/result`).
 - [ ] Implement `card.enroll` handling (read / store the RFID card UID locally).
 - [ ] Implement card sync result reporting (`POST /card/result`).
+- [ ] Implement `user.update` handling (replace local record; `card_uids` is the authoritative full card set).
+- [ ] Implement `user.delete` handling (remove local record).
 - [ ] Implement local fingerprint matching.
 - [ ] Generate a unique attendance `event_id` per event.
 - [ ] Preserve `event_id` when retrying.
 - [ ] Implement offline attendance storage.
 - [ ] Implement batch synchronization.
 - [ ] Implement command acknowledgement.
+- [ ] Parse `work_schedule` from the hello response and use it for local schedule display.
+- [ ] Display `user_name` from the attendance response on the terminal after a successful scan.
 - [ ] Implement HTTP status/error handling.
 - [ ] Never transmit raw fingerprint templates.
 
@@ -667,15 +747,19 @@ READY
 18. TAB5 `POST`s `card/result`; command becomes `acked`; the card is marked verified and bound to the terminal on the dashboard.
 19. User presents fingerprint.
 20. TAB5 matches locally.
-21. TAB5 `POST`s attendance with `event_id` (`201`, `attendance_status` returned).
-22. Backend stores the attendance.
-23. Disconnect network.
-24. User presents fingerprint again.
-25. TAB5 stores attendance locally (same `event_id`, original timestamp).
-26. Restore network.
-27. TAB5 retries the same `event_id`.
-28. Backend returns the original record ID — stored once.
-29. TAB5 continues heartbeat and command polling.
+21. TAB5 `POST`s attendance with `event_id` (`201`, `attendance_status` and `user_name` returned).
+22. Backend stores the attendance; the terminal shows the returned `user_name`.
+23. Admin edits the person's name / rebinds a card on the dashboard.
+24. TAB5 receives `user.update`, replaces the local record (dropping any card UID missing from `card_uids`), and acks.
+25. Admin deactivates the person.
+26. TAB5 receives `user.delete`, removes the local record, and acks.
+27. Disconnect network.
+28. User presents fingerprint again.
+29. TAB5 stores attendance locally (same `event_id`, original timestamp).
+30. Restore network.
+31. TAB5 retries the same `event_id`.
+32. Backend returns the original record ID — stored once.
+33. TAB5 continues heartbeat and command polling.
 
 ---
 

@@ -172,6 +172,32 @@ func normalizeMAC(v string) (string, bool) {
 	return b.String(), true
 }
 
+// workSchedule returns the organization's clock-in/clock-out times so the
+// terminal can render schedule info and make local decisions without a
+// round-trip. Defaults mirror the settings page.
+func (h *Hub) workSchedule(orgID int) gin.H {
+	start, end := "08:00", "17:00"
+	late := 15
+	var hours string
+	var threshold int
+	if h.db.QueryRow("SELECT working_hours,late_threshold_minutes FROM attendance_rules WHERE organization_id=?", orgID).Scan(&hours, &threshold) == nil {
+		var parsed struct {
+			Start string `json:"start"`
+			End   string `json:"end"`
+		}
+		if json.Unmarshal([]byte(hours), &parsed) == nil {
+			if parsed.Start != "" {
+				start = parsed.Start
+			}
+			if parsed.End != "" {
+				end = parsed.End
+			}
+		}
+		late = threshold
+	}
+	return gin.H{"clock_in": start, "clock_out": end, "late_threshold_minutes": late}
+}
+
 // HelloHandler handles POST /api/v1/devices/hello — the device handshake.
 // New devices are auto-provisioned; returning devices are authenticated.
 func (h *Hub) HelloHandler() gin.HandlerFunc {
@@ -252,6 +278,7 @@ func (h *Hub) HelloHandler() gin.HandlerFunc {
 				"api_key":          apiKey,
 				"protocol_version": ProtocolVersion,
 				"firmware_version": p.FirmwareVersion,
+				"work_schedule":    h.workSchedule(orgID),
 				"message":          "Store this API key securely. It is returned only during provisioning.",
 			})
 			return
@@ -284,6 +311,7 @@ func (h *Hub) HelloHandler() gin.HandlerFunc {
 			"device_id":        fmt.Sprintf("dev_%d", deviceID),
 			"organization_id":  orgID,
 			"protocol_version": ProtocolVersion,
+			"work_schedule":    h.workSchedule(orgID),
 			"message":          "Connected successfully.",
 		})
 	}
@@ -559,6 +587,78 @@ func (h *Hub) CardResultHandler() gin.HandlerFunc {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// User roster sync — fan a user change out to every org terminal
+// ---------------------------------------------------------------------------
+
+// queueUserCommand inserts one command row per non-revoked device in the org.
+// Offline devices keep the row pending and pick it up on their next poll, so
+// roster changes converge even when a terminal is down at the time.
+func (h *Hub) queueUserCommand(orgID int, commandType string, build func(requestID string) any) (int, error) {
+	rows, err := h.db.Query("SELECT id FROM devices WHERE organization_id=? AND status!='revoked'", orgID)
+	if err != nil {
+		return 0, err
+	}
+	deviceIDs := []int{}
+	for rows.Next() {
+		var id int
+		if rows.Scan(&id) == nil {
+			deviceIDs = append(deviceIDs, id)
+		}
+	}
+	rows.Close()
+	queued := 0
+	for _, deviceID := range deviceIDs {
+		r, err := h.db.Exec("INSERT INTO device_commands(organization_id,device_id,command_type,payload_json,status) VALUES(?,?,?,?,?)",
+			orgID, deviceID, commandType, "{}", "pending")
+		if err != nil {
+			continue
+		}
+		cmdID, _ := r.LastInsertId()
+		requestID := strconv.FormatInt(cmdID, 10)
+		payload, _ := json.Marshal(build(requestID))
+		_, _ = h.db.Exec("UPDATE device_commands SET payload_json=? WHERE id=?", string(payload), cmdID)
+		queued++
+	}
+	return queued, nil
+}
+
+// QueueUserUpdate broadcasts a user's authoritative record (name, phone,
+// role, status, bound card UIDs) to all terminals.
+func (h *Hub) QueueUserUpdate(orgID, userID int, userUUID string) (int, error) {
+	if userUUID == "" {
+		return 0, nil
+	}
+	var fullName, phone, role, status string
+	if err := h.db.QueryRow("SELECT full_name,phone,role,status FROM users WHERE id=? AND organization_id=?", userID, orgID).Scan(&fullName, &phone, &role, &status); err != nil {
+		return 0, err
+	}
+	cards := []string{}
+	crows, err := h.db.Query("SELECT uid FROM rfid_cards WHERE organization_id=? AND user_id=? AND status='issued'", orgID, userID)
+	if err == nil {
+		for crows.Next() {
+			var uid string
+			if crows.Scan(&uid) == nil {
+				cards = append(cards, uid)
+			}
+		}
+		crows.Close()
+	}
+	return h.queueUserCommand(orgID, TypeUserUpdate, func(requestID string) any {
+		return UserUpdatePayload{RequestID: requestID, UserID: userUUID, FullName: fullName, Phone: phone, Role: role, Status: status, CardUIDs: cards}
+	})
+}
+
+// QueueUserDelete broadcasts removal of a user from all terminal rosters.
+func (h *Hub) QueueUserDelete(orgID int, userUUID string) (int, error) {
+	if userUUID == "" {
+		return 0, nil
+	}
+	return h.queueUserCommand(orgID, TypeUserDelete, func(requestID string) any {
+		return UserDeletePayload{RequestID: requestID, UserID: userUUID}
+	})
+}
 
 func hashKey(v string) string {
 	sum := sha256.Sum256([]byte(v))

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Devices · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -87,16 +87,17 @@
                 </span>
               </td>
               <td>
-                <span class="badge-pill {{if eq .Status "online"}}active{{else}}offline{{end}}">
-                  <span class="status-dot {{if eq .Status "online"}}online{{else}}offline{{end}}"></span>
-                  {{.Status}}
-                </span>
+                {{if eq .Status "online"}}
+                <span class="cell-flag positive"><span class="live-dot"></span>{{.Status}}</span>
+                {{else}}
+                <span class="cell-flag muted">{{.Status}}</span>
+                {{end}}
               </td>
               <td style="font-size:12px">
                 {{if .Heartbeat}}{{.Heartbeat}}{{else}}Never{{end}}
               </td>
               <td>
-                <span class="badge-pill" style="font-size:11px">{{.Pending}} queued</span>
+                <span class="cell-flag muted">{{.Pending}} queued</span>
               </td>
             </tr>
             {{else}}

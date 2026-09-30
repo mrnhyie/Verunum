@@ -12,8 +12,8 @@
     <title>Verunum — Attendance, verified at the door</title>
 
     <link rel="icon" href="/static/logo.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/app.css?v=20260928b" />
-    <link rel="stylesheet" href="/static/landing.css?v=20260928b" />
+    <link rel="stylesheet" href="/static/app.css?v=20260930a" />
+    <link rel="stylesheet" href="/static/landing.css?v=20260930a" />
 
     <script>
       document.documentElement.classList.add("js-reveal");
@@ -187,13 +187,13 @@
                         <p class="eyebrow">Workspace attendance</p>
                         <h3>Today at a glance</h3>
                       </div>
-                      <span class="badge-pill active">Live</span>
+                      <span class="cell-flag positive"><span class="live-dot"></span>Live</span>
                     </div>
 
                     <section class="metric-grid">
                       <article class="mono-card metric-card">
-                        <div class="metric-icon mint">
-                          <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></svg>
+                        <div class="metric-icon">
+                          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
                         </div>
                         <div>
                           <span>Present</span>
@@ -203,10 +203,8 @@
                       </article>
 
                       <article class="mono-card metric-card">
-                        <div class="metric-icon peach">
-                          <svg viewBox="0 0 24 24">
-                            <path d="M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                          </svg>
+                        <div class="metric-icon">
+                          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
                         </div>
                         <div>
                           <span>Late</span>
@@ -216,11 +214,8 @@
                       </article>
 
                       <article class="mono-card metric-card">
-                        <div class="metric-icon violet">
-                          <svg viewBox="0 0 24 24">
-                            <rect x="5" y="3" width="14" height="18" rx="2" />
-                            <path d="M9 17h6" />
-                          </svg>
+                        <div class="metric-icon">
+                          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 10h-4v-7h4v7z"/></svg>
                         </div>
                         <div>
                           <span>Terminals</span>
@@ -290,7 +285,7 @@
                           <strong>Ama Owusu</strong>
                           <span>Fingerprint · 08:04</span>
                         </div>
-                        <span class="badge-pill active">On time</span>
+                        <span class="cell-flag positive">On time</span>
                       </div>
 
                       <div class="event-row">
@@ -304,7 +299,7 @@
                           <strong>Kwame Mensah</strong>
                           <span>RFID · 08:02</span>
                         </div>
-                        <span class="badge-pill active">On time</span>
+                        <span class="cell-flag positive">On time</span>
                       </div>
                     </div>
                   </div>
@@ -581,7 +576,7 @@
                 <strong>Ama Owusu</strong>
                 <span>Fingerprint · 08:04</span>
               </div>
-              <span class="badge-pill active">On time</span>
+              <span class="cell-flag positive">On time</span>
             </div>
           </div>
         </div>

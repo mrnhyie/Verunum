@@ -12,6 +12,8 @@ const (
 	TypeEnrollStart  = "enroll.start"
 	TypeEnrollResult = "enroll.result"
 	TypeCardEnroll   = "card.enroll"
+	TypeUserUpdate   = "user.update"
+	TypeUserDelete   = "user.delete"
 	TypeAttendance   = "attendance"
 	TypeAck          = "ack"
 	TypeError        = "error"
@@ -88,6 +90,26 @@ type AttendancePayload struct {
 	Event     string `json:"event"`
 	Timestamp string `json:"timestamp,omitempty"`
 	Method    string `json:"method,omitempty"`
+}
+
+// UserUpdatePayload carries the authoritative user record so terminals can
+// replace their local roster entry. CardUIDs is the complete current card
+// list: replacing a lost card is expressed by re-sending the new set.
+type UserUpdatePayload struct {
+	RequestID string   `json:"request_id"`
+	UserID    string   `json:"user_id"`
+	FullName  string   `json:"full_name,omitempty"`
+	Phone     string   `json:"phone,omitempty"`
+	Role      string   `json:"role,omitempty"`
+	Status    string   `json:"status,omitempty"`
+	CardUIDs  []string `json:"card_uids,omitempty"`
+}
+
+// UserDeletePayload tells terminals to remove the user from their local
+// roster. The platform soft-deletes: user status becomes inactive.
+type UserDeletePayload struct {
+	RequestID string `json:"request_id"`
+	UserID    string `json:"user_id"`
 }
 
 type AckPayload struct {

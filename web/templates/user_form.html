@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}} · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -91,9 +91,8 @@
           <div>
             <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted)">Biometric Status</div>
             <div id="fpStatus" style="margin-top: 4px">
-              <span class="badge-pill {{if .Person}}{{if eq .Person.Fingerprint "enrolled"}}active{{else}}offline{{end}}{{else}}offline{{end}}">
-                {{if .Person}}{{.Person.Fingerprint}}{{else}}not_enrolled{{end}}
-              </span>
+              {{if .Person}}{{if eq .Person.Fingerprint "enrolled"}}<span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>enrolled</span>{{else}}<span class="cell-flag muted">{{.Person.Fingerprint}}</span>{{end}}
+              {{else}}<span class="cell-flag muted">not_enrolled</span>{{end}}
             </div>
           </div>
         </div>
@@ -115,7 +114,7 @@
           <p id="fingerprintPrompt" class="fingerprint-prompt">Choose a live terminal, then begin the fingerprint intake.</p>
           <button type="button" class="btn-pill btn-pill-primary fingerprint-start" id="startEnroll">
             <svg viewBox="0 0 24 24"><path d="M12 11c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>
-            Click to start fingerprint intake
+            <span id="startEnrollLabel">Click to start fingerprint intake</span>
           </button>
           <label class="fingerprint-device">
             Assigned Hardware Terminal
@@ -168,7 +167,7 @@
       personId = data.id;
       personUuid = data.uuid;
       uuidEl.textContent = data.uuid;
-      fpEl.innerHTML = '<span class="badge-pill offline">' + (data.fingerprint_status || 'not_enrolled') + '</span>';
+      fpEl.innerHTML = '<span class="cell-flag muted">' + (data.fingerprint_status || 'not_enrolled') + '</span>';
       panel.style.display = 'block';
       history.replaceState({}, '', '/users/' + personId);
       note.textContent = 'Profile saved. Start fingerprint enrollment on a connected terminal.';
@@ -176,8 +175,21 @@
       initSSE();
     });
 
+    const startBtn = document.getElementById('startEnroll');
+    const startBtnLabel = document.getElementById('startEnrollLabel');
+
+    function setEnrollDone() {
+      startBtn.disabled = true;
+      startBtnLabel.textContent = 'Fingerprint enrolled';
+    }
+
+    // A person that already carries a fingerprint must not queue a second
+    // enrollment command — re-capture would create a duplicate entry.
+    if ('{{if .Person}}{{.Person.Fingerprint}}{{else}}not_enrolled{{end}}' === 'enrolled') setEnrollDone();
+
     document.getElementById('startEnroll').addEventListener('click', async () => {
       if (!personId) { note.textContent = 'Save the person first.'; return; }
+      startBtn.disabled = true;
       const deviceId = Number(document.getElementById('deviceSelect').value);
       const res = await fetch('/api/v1/devices/' + deviceId + '/enroll-request', {
         method: 'POST',
@@ -188,36 +200,43 @@
       if (res.status === 422) {
         note.className = 'alert-banner error';
         note.textContent = 'Target device is offline.';
+        startBtn.disabled = false;
         return;
       }
       if (!res.ok) {
         note.className = 'alert-banner error';
         note.textContent = data.error || 'Could not reach the terminal.';
+        startBtn.disabled = false;
         return;
       }
-      fpEl.innerHTML = '<span class="badge-pill warning">pending</span>';
+      fpEl.innerHTML = '<span class="cell-flag muted">pending</span>';
       note.className = 'alert-banner';
       note.classList.add('warning');
       note.textContent = 'Enrollment command sent to terminal. Wait for the person to scan their finger on the sensor.';
       initSSE();
     });
 
+    let sseSource = null;
     function initSSE() {
-      const source = new EventSource('/api/v1/events');
-      source.addEventListener('user.enrollment_updated', (e) => {
+      if (sseSource) sseSource.close();
+      sseSource = new EventSource('/api/v1/events');
+      sseSource.addEventListener('user.enrollment_updated', (e) => {
         try {
           const data = JSON.parse(e.data);
           if (data.user_id === personUuid || data.user_id === String(personId)) {
             if (data.status === 'enrolled') {
-              fpEl.innerHTML = '<span class="badge-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> enrolled</span>';
+              fpEl.innerHTML = '<span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>enrolled</span>';
               note.className = 'alert-banner success';
               note.textContent = 'Fingerprint enrolled successfully on the physical device!';
+              setEnrollDone();
             } else {
-              fpEl.innerHTML = '<span class="badge-pill offline">' + (data.status || 'failed') + '</span>';
+              fpEl.innerHTML = '<span class="cell-flag negative">' + (data.status || 'failed') + '</span>';
               note.className = 'alert-banner error';
               note.textContent = 'Enrollment did not complete on the device (' + (data.status || 'failed') + '). Try again.';
+              startBtn.disabled = false;
+              startBtnLabel.textContent = 'Try fingerprint intake again';
             }
-            source.close();
+            sseSource.close();
           }
         } catch (err) {
           console.error(err);

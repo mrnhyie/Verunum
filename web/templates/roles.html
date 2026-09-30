@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Roles · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -89,7 +89,7 @@
                 </span>
               </td>
               <td>
-                {{if .Count}}<span class="badge-pill">{{.Count}}</span>{{else}}<span class="subtle" style="color:var(--subtle)">Nobody</span>{{end}}
+                {{if .Count}}<span class="cell-flag muted">{{.Count}} members</span>{{else}}<span class="subtle" style="color:var(--subtle)">Nobody</span>{{end}}
               </td>
               <td class="row-actions" style="justify-content:flex-end">
                 {{if .Count}}

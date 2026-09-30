@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>People & Staff · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -101,32 +101,20 @@
                 </div>
               </td>
               <td>
-                <span class="badge-pill" style="font-size:10px">{{if .RoleLabel}}{{.RoleLabel}}{{else}}{{.Role}}{{end}}</span>
+                <span class="cell-flag muted">{{if .RoleLabel}}{{.RoleLabel}}{{else}}{{.Role}}{{end}}</span>
               </td>
-              <td>
-                <span class="badge-pill fp-pill {{if eq .Fingerprint "enrolled"}}active{{else}}offline{{end}}">
-                  {{if eq .Fingerprint "enrolled"}}
-                  <svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg>
-                  Enrolled
-                  {{else}}
-                  Not enrolled
-                  {{end}}
-                </span>
-              </td>
-              <td>
-                {{if .Cards}}
-                <span class="badge-pill card-pill active">{{if gt .Cards 1}}{{.Cards}} cards{{else}}Linked{{end}}</span>
-                {{else if .PendingCards}}
-                <span class="badge-pill card-pill warning">Pending</span>
+              <td class="fp-cell">
+                {{if eq .Fingerprint "enrolled"}}
+                <span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Enrolled</span>
                 {{else}}
-                <span class="badge-pill card-pill offline">None</span>
+                <span class="cell-flag muted">Not enrolled</span>
                 {{end}}
               </td>
-              <td>
-                <span class="badge-pill status-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
-                  <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
-                  {{.Status}}
-                </span>
+              <td class="card-cell">
+                {{if .Cards}}<span class="cell-flag positive">{{if gt .Cards 1}}{{.Cards}} cards{{else}}Linked{{end}}</span>{{else if .PendingCards}}<span class="cell-flag muted">Pending</span>{{else}}<span class="cell-flag muted">None</span>{{end}}
+              </td>
+              <td class="status-cell">
+                {{if eq .Status "active"}}<span class="cell-flag positive"><span class="live-dot"></span>{{.Status}}</span>{{else}}<span class="cell-flag muted">{{.Status}}</span>{{end}}
               </td>
               <td class="row-actions" style="justify-content:flex-end">
                 <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/users/{{.ID}}">Enroll</a>
@@ -356,7 +344,16 @@
         try {
           const data = JSON.parse(e.data);
           if (!activeEnrollUserUUID || data.user_id === activeEnrollUserUUID) {
-            handleEnrollmentSuccess();
+            if (data.status === 'enrolled') {
+              handleEnrollmentSuccess();
+            } else {
+              const msg = document.getElementById('scannerStatusMsg');
+              const glyphBox = document.getElementById('scannerGlyphBox');
+              glyphBox.className = 'scanner-glyph-box state-error';
+              msg.textContent = 'Enrollment did not complete (' + (data.status || 'failed') + '). Try again.';
+              msg.className = 'scanner-status-label error';
+              document.getElementById('requestScanBtn').disabled = false;
+            }
           }
         } catch (err) {
           console.error(err);
@@ -411,35 +408,35 @@
     });
 
     // Live row state: reflect enrollments/status changes without a manual reload
-    const fpPillHTML = (fp) => fp === 'enrolled'
-      ? '<span class="badge-pill fp-pill active"><svg viewBox="0 0 24 24" style="width:12px; height:12px"><path d="M20 6L9 17l-5-5"/></svg> Enrolled</span>'
-      : '<span class="badge-pill fp-pill offline">Not enrolled</span>';
+    const fpFlagHTML = (fp) => fp === 'enrolled'
+      ? '<span class="tick"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Enrolled</span>'
+      : '<span class="cell-flag muted">Not enrolled</span>';
 
-    const cardPillHTML = (cards, pending) => cards > 0
-      ? '<span class="badge-pill card-pill active">' + (cards > 1 ? cards + ' cards' : 'Linked') + '</span>'
+    const cardFlagHTML = (cards, pending) => cards > 0
+      ? '<span class="cell-flag positive">' + (cards > 1 ? cards + ' cards' : 'Linked') + '</span>'
       : pending > 0
-        ? '<span class="badge-pill card-pill warning">Pending</span>'
-        : '<span class="badge-pill card-pill offline">None</span>';
+        ? '<span class="cell-flag muted">Pending</span>'
+        : '<span class="cell-flag muted">None</span>';
 
     function applyRowState(row, fp, st, cards, pending) {
       if (fp) {
-        const fpCell = row.querySelector('.fp-pill');
-        if (fpCell) fpCell.outerHTML = fpPillHTML(fp);
+        const fpCell = row.querySelector('.fp-cell');
+        if (fpCell) fpCell.innerHTML = fpFlagHTML(fp);
         const editBtn = row.querySelector('.edit-person');
         if (editBtn) editBtn.dataset.fingerprint = fp;
       }
       if (st) {
-        const stCell = row.querySelector('.status-pill');
+        const stCell = row.querySelector('.status-cell');
         if (stCell) {
-          const active = st === 'active';
-          stCell.className = 'badge-pill status-pill ' + (active ? 'active' : 'offline');
-          stCell.innerHTML = '<span class="status-dot ' + (active ? 'online' : 'offline') + '"></span> ' + st;
+          stCell.innerHTML = st === 'active'
+            ? '<span class="cell-flag positive"><span class="live-dot"></span>' + st + '</span>'
+            : '<span class="cell-flag muted">' + st + '</span>';
           row.dataset.status = st;
         }
       }
       if (cards !== undefined && cards !== null) {
-        const cCell = row.querySelector('.card-pill');
-        if (cCell) cCell.outerHTML = cardPillHTML(cards, pending || 0);
+        const cCell = row.querySelector('.card-cell');
+        if (cCell) cCell.innerHTML = cardFlagHTML(cards, pending || 0);
         row.dataset.cards = cards;
         row.dataset.pending = pending || 0;
       }

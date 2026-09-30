@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Customer Organisations · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260928b">
+  <link rel="stylesheet" href="/static/app.css?v=20260930a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -104,21 +104,18 @@
                 </a>
               </td>
               <td>
-                <span class="badge-pill">{{.Type}}</span>
+                <span class="cell-flag muted">{{.Type}}</span>
               </td>
               <td>
                 {{if .Admin}}{{.Admin}}{{else}}<span class="subtle">Not assigned</span>{{end}}
               </td>
               <td>
-                <span class="badge-pill">
+                <span class="cell-flag muted">
                   {{.Devices}} devices
                 </span>
               </td>
               <td>
-                <span class="badge-pill {{if eq .Status "active"}}active{{else}}offline{{end}}">
-                  <span class="status-dot {{if eq .Status "active"}}online{{else}}offline{{end}}"></span>
-                  {{.Status}}
-                </span>
+                {{if eq .Status "active"}}<span class="cell-flag positive"><span class="live-dot"></span>{{.Status}}</span>{{else}}<span class="cell-flag muted">{{.Status}}</span>{{end}}
               </td>
               <td class="row-actions" style="justify-content: flex-end">
                 <a class="btn-pill btn-pill-secondary" style="padding: 5px 12px; font-size: 11px" href="/platform/organisations/{{.ID}}">Manage Profile</a>

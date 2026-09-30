@@ -554,7 +554,8 @@ func (a *app) ingestAttendance(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid event"})
 		return
 	}
-	id, status, _, e := a.insertEvent(c.MustGet("org_id").(int), c.MustGet("device_id").(int), in)
+	org := c.MustGet("org_id").(int)
+	id, status, _, e := a.insertEvent(org, c.MustGet("device_id").(int), in)
 	if e != nil {
 		if errors.Is(e, errDuplicateClockEvent) {
 			c.JSON(http.StatusConflict, gin.H{"error": duplicateClockMessage(in.Event)})
@@ -563,7 +564,15 @@ func (a *app) ingestAttendance(c *gin.Context) {
 		c.JSON(400, gin.H{"error": e.Error()})
 		return
 	}
-	c.JSON(201, gin.H{"id": id, "attendance_status": status})
+	// Echo the person's name so the terminal can display who just scanned.
+	userID, userUUID, _ := in.userID()
+	var name string
+	if userID > 0 {
+		_ = a.db.QueryRow("SELECT full_name FROM users WHERE id=? AND organization_id=?", userID, org).Scan(&name)
+	} else if userUUID != "" {
+		_ = a.db.QueryRow("SELECT full_name FROM users WHERE uuid=? AND organization_id=?", userUUID, org).Scan(&name)
+	}
+	c.JSON(201, gin.H{"id": id, "attendance_status": status, "user_name": name})
 }
 func (a *app) ingestBatch(c *gin.Context) {
 	var in []eventInput
@@ -1003,7 +1012,9 @@ func (a *app) usersPage(c *gin.Context) {
 	labels := roleNameMap(roles)
 	devices := a.orgDeviceList(c)
 	q := strings.TrimSpace(c.Query("q"))
-	query := `SELECT id,full_name,email,phone,role,fingerprint_status,status,uuid,
+	// phone/email are nullable; a bare NULL aborts rows.Scan and silently
+	// blanks every field after it in the rendered row.
+	query := `SELECT id,full_name,coalesce(email,''),coalesce(phone,''),role,fingerprint_status,status,uuid,
 		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='issued'),
 		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='pending')
 		FROM users WHERE organization_id=?`
@@ -2176,6 +2187,12 @@ func (a *app) updateUser(c *gin.Context) {
 		return
 	}
 	a.audit(c, "update", "user", int64(id), "", in)
+	org := a.org(c)
+	var userUUID string
+	_ = a.db.QueryRow("SELECT uuid FROM users WHERE id=? AND organization_id=?", id, org).Scan(&userUUID)
+	if _, err := a.hub.QueueUserUpdate(org, id, userUUID); err != nil {
+		log.Printf("user sync: queue user.update for %d: %v", id, err)
+	}
 	if wantsHTML(c) {
 		c.Redirect(http.StatusFound, "/users")
 		return
@@ -2184,11 +2201,17 @@ func (a *app) updateUser(c *gin.Context) {
 }
 func (a *app) deleteUser(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	r, _ := a.db.Exec("UPDATE users SET status='inactive' WHERE id=? AND organization_id=?", id, a.org(c))
+	org := a.org(c)
+	var userUUID string
+	_ = a.db.QueryRow("SELECT uuid FROM users WHERE id=? AND organization_id=?", id, org).Scan(&userUUID)
+	r, _ := a.db.Exec("UPDATE users SET status='inactive' WHERE id=? AND organization_id=?", id, org)
 	n, _ := r.RowsAffected()
 	if n == 0 {
 		c.Status(404)
 		return
+	}
+	if _, err := a.hub.QueueUserDelete(org, userUUID); err != nil {
+		log.Printf("user sync: queue user.delete for %d: %v", id, err)
 	}
 	a.audit(c, "deactivate", "user", int64(id), "", nil)
 	c.Status(204)
@@ -2290,6 +2313,10 @@ func (a *app) createCard(c *gin.Context) {
 	// a terminal or handed to a new person later.
 	var existingID int64
 	existing := a.db.QueryRow("SELECT id FROM rfid_cards WHERE organization_id=? AND upper(uid)=upper(?)", org, in.UID).Scan(&existingID) == nil
+	var prevHolder int
+	if existing {
+		_ = a.db.QueryRow("SELECT COALESCE(user_id,0) FROM rfid_cards WHERE id=? AND organization_id=?", existingID, org).Scan(&prevHolder)
+	}
 	var id int64
 	if existing {
 		if _, e := a.db.Exec(`UPDATE rfid_cards SET user_id=?,expiry_date=?,status=?,
@@ -2322,6 +2349,21 @@ func (a *app) createCard(c *gin.Context) {
 		if e != nil {
 			a.cardIssueError(c, 500, "sync_failed", in.UID)
 			return
+		}
+	}
+
+	// Reissue or rebind moved a card between rosters: every terminal needs the
+	// updated card list, or a lost card stays valid on terminals it wasn't
+	// synced to.
+	for _, uid := range []int{prevHolder, int(in.UserID)} {
+		if uid <= 0 {
+			continue
+		}
+		var userUUID string
+		if _ = a.db.QueryRow("SELECT uuid FROM users WHERE id=? AND organization_id=?", uid, org).Scan(&userUUID); userUUID != "" {
+			if _, err := a.hub.QueueUserUpdate(org, uid, userUUID); err != nil {
+				log.Printf("user sync: queue user.update after card %d issue: %v", id, err)
+			}
 		}
 	}
 
