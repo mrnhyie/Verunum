@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}}</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930a">
+  <link rel="stylesheet" href="/static/app.css?v=20260930b">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -177,6 +177,30 @@
       </div>
     </div>
 
+    <!-- Groups Section -->
+    {{if .Groups}}
+    <div class="mono-card" style="margin-top: 28px">
+      <div class="panel-heading">
+        <div>
+          <h2 style="margin: 0">Groups</h2>
+          <p class="subtle" style="margin: 2px 0 0; font-size: 12px; color: var(--muted)">Departments, blocks or teams configured inside this workspace.</p>
+        </div>
+        <span class="cell-flag muted">{{len .Groups}} Groups</span>
+      </div>
+      <div class="group-strips" style="padding: 0 24px 24px">
+        {{range .Groups}}
+        <div class="group-strip">
+          <div class="group-strip-head">
+            <strong>{{.Name}}</strong>
+            <span>{{if .Location}}{{.Location}}{{else}}No location set{{end}}</span>
+          </div>
+          <small>{{.Members}} people · {{.Devices}} devices</small>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
     <!-- Hardware Inventory Section -->
     <div class="mono-card" style="margin-top: 28px">
       <div class="panel-heading">
@@ -193,6 +217,7 @@
             <tr>
               <th>Device Name</th>
               <th>MAC Address</th>
+              <th>Group</th>
               <th>Status</th>
               <th>Last Seen</th>
               <th style="text-align: right">Actions</th>
@@ -216,6 +241,9 @@
                 <span class="mono" style="font-size: 12px; font-weight: 600; color: var(--ink-secondary); background: var(--surface); padding: 3px 8px; border-radius: 6px">
                   {{if .MAC}}{{.MAC}}{{else}}—{{end}}
                 </span>
+              </td>
+              <td>
+                {{if .Group}}<span class="group-chip">{{.Group}}</span>{{else}}<span class="subtle" style="color: var(--subtle)">—</span>{{end}}
               </td>
               <td>
                 {{if .IsOnline}}<span class="cell-flag positive"><span class="live-dot"></span>Online</span>{{else}}<span class="cell-flag muted">Offline</span>{{end}}
@@ -245,7 +273,7 @@
             </tr>
             {{else}}
             <tr>
-              <td colspan="5" style="text-align: center; padding: 48px 20px">
+              <td colspan="6" style="text-align: center; padding: 48px 20px">
                 No physical devices provisioned for this organisation yet.
                 <div style="margin-top: 12px">
                   <a href="/platform/device-provisioning?org_id={{.Org.ID}}" class="btn-pill btn-pill-primary" style="font-size: 12px; padding: 6px 16px">

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>People & Staff · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930a">
+  <link rel="stylesheet" href="/static/app.css?v=20260930b">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -31,6 +31,7 @@
     <a class="rail-link" href="/devices"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
     <a class="rail-link" href="/rfid-cards"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
     <a class="rail-link" href="/roles"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Roles</a>
+    <a class="rail-link" href="/groups"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg> Groups</a>
     <p class="rail-label">Operations</p>
     <a class="rail-link" href="/attendance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
     <a class="rail-link" href="/settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Work hours</a>
@@ -71,6 +72,14 @@
             <option>active</option>
             <option>inactive</option>
           </select>
+          {{if .Groups}}
+          <select id="groupFilter" style="border-color:var(--border-light); border-radius:9999px; padding:6px 14px">
+            <option value="">All groups</option>
+            {{range .Groups}}
+            <option value="{{.ID}}">{{.Name}}</option>
+            {{end}}
+          </select>
+          {{end}}
         </div>
       </div>
 
@@ -80,6 +89,7 @@
             <tr>
               <th>Person</th>
               <th>Role</th>
+              <th>Group</th>
               <th>Fingerprint</th>
               <th>RFID card</th>
               <th>Status</th>
@@ -88,7 +98,7 @@
           </thead>
           <tbody>
             {{range .Users}}
-            <tr data-search="{{.Name}} {{.Email}} {{.RoleLabel}} {{.Role}} {{.Status}}" data-role="{{.Role}}" data-status="{{.Status}}" data-id="{{.ID}}" data-uuid="{{.UUID}}" data-cards="{{.Cards}}" data-pending="{{.PendingCards}}">
+            <tr data-search="{{.Name}} {{.Email}} {{.RoleLabel}} {{.Role}} {{.Status}} {{.Group}}" data-role="{{.Role}}" data-status="{{.Status}}" data-group="{{.GroupID}}" data-id="{{.ID}}" data-uuid="{{.UUID}}" data-cards="{{.Cards}}" data-pending="{{.PendingCards}}">
               <td>
                 <div class="person-cell">
                   <div style="width:34px; height:34px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:grid; place-items:center; font-weight:700; color:var(--ink)">
@@ -102,6 +112,9 @@
               </td>
               <td>
                 <span class="cell-flag muted">{{if .RoleLabel}}{{.RoleLabel}}{{else}}{{.Role}}{{end}}</span>
+              </td>
+              <td>
+                {{if .Group}}<span class="group-chip"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg>{{.Group}}</span>{{else}}<span class="subtle" style="color:var(--subtle); font-size:12px">—</span>{{end}}
               </td>
               <td class="fp-cell">
                 {{if eq .Fingerprint "enrolled"}}
@@ -119,7 +132,7 @@
               <td class="row-actions" style="justify-content:flex-end">
                 <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/users/{{.ID}}">Enroll</a>
                 <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/attendance?user_id={{.ID}}">Logs</a>
-                <button type="button" class="btn-pill btn-pill-secondary edit-person" style="padding:4px 12px; font-size:11px" data-id="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-phone="{{.Phone}}" data-role="{{.Role}}" data-status="{{.Status}}" data-fingerprint="{{.Fingerprint}}">Edit</button>
+                <button type="button" class="btn-pill btn-pill-secondary edit-person" style="padding:4px 12px; font-size:11px" data-id="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-phone="{{.Phone}}" data-role="{{.Role}}" data-status="{{.Status}}" data-fingerprint="{{.Fingerprint}}" data-group="{{.GroupID}}">Edit</button>
                 <form method="post" action="/users/{{.ID}}?_method=DELETE" style="margin:0">
                   <button class="btn-pill btn-pill-danger" style="padding:4px 12px; font-size:11px" onclick="return confirm('Deactivate this person?')">Deactivate</button>
                 </form>
@@ -127,7 +140,7 @@
             </tr>
             {{else}}
             <tr>
-              <td colspan="6" class="table-empty">
+              <td colspan="7" class="table-empty">
                 No members found. Add your first member to begin.
               </td>
             </tr>
@@ -191,6 +204,16 @@
           </div>
 
           <label>
+            Group
+            <select name="branch_id" id="personGroup">
+              <option value="">Unassigned</option>
+              {{range .Groups}}
+              <option value="{{.ID}}">{{.Name}}</option>
+              {{end}}
+            </select>
+          </label>
+
+          <label>
             Assigned Device Terminal
             <select id="modalDeviceSelect">
               {{range .Devices}}
@@ -242,15 +265,17 @@
     const search = document.getElementById('peopleSearch');
     const role = document.getElementById('roleFilter');
     const status = document.getElementById('statusFilter');
+    const group = document.getElementById('groupFilter');
     function filter() {
       document.querySelectorAll('#peopleTable tbody tr[data-search]').forEach(r => {
         const matchesSearch = r.dataset.search.toLowerCase().includes(search.value.toLowerCase());
         const matchesRole = !role.value || r.dataset.role === role.value;
         const matchesStatus = !status.value || r.dataset.status === status.value;
-        r.hidden = !(matchesSearch && matchesRole && matchesStatus);
+        const matchesGroup = !group || !group.value || r.dataset.group === group.value;
+        r.hidden = !(matchesSearch && matchesRole && matchesStatus && matchesGroup);
       });
     }
-    [search, role, status].forEach(x => x.addEventListener('input', filter));
+    [search, role, status, group].forEach(x => x && x.addEventListener('input', filter));
 
     // Modal & Biometric State Machine
     const modal = document.getElementById('personModal');
@@ -394,6 +419,7 @@
       document.getElementById('personRole').value = b.dataset.role;
       document.getElementById('personStatus').value = b.dataset.status;
       document.getElementById('personFingerprint').value = b.dataset.fingerprint;
+      document.getElementById('personGroup').value = b.dataset.group || '';
       document.getElementById('emailField').hidden = true;
       resetScannerUI();
       if (b.dataset.fingerprint === 'enrolled') {

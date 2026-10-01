@@ -458,6 +458,60 @@ button { font-family: var(--font-sans); cursor: pointer; }
 .cell-flag.negative { color: var(--rust-ink); }
 .cell-flag.muted    { color: var(--muted); font-weight: 500; }
 
+/* Groups — department chips, pickers, and per-group attendance strips */
+.group-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--ink-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.group-select {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+}
+.group-strips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 0 24px 24px;
+}
+.group-strip {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  text-decoration: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+a.group-strip:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+.group-strip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.group-strip-head strong { color: var(--ink); font-size: 14px; }
+.group-strip-head span { color: var(--muted); font-size: 12px; }
+.group-strip small { color: var(--muted); font-size: 11px; }
+.group-meter {
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--border-light);
+  overflow: hidden;
+}
+.group-meter i {
+  display: block;
+  height: 100%;
+  width: var(--fill, 0%);
+  border-radius: inherit;
+  background: var(--olive);
+  transition: width 0.6s cubic-bezier(0.22, 0.68, 0.36, 1);
+}
+
 /* Continuously bouncing marker — anything "live"/active wears this */
 .live-dot {
   width: 7px; height: 7px; flex: none;
@@ -591,6 +645,7 @@ button { font-family: var(--font-sans); cursor: pointer; }
 
 /* ---------- Event Rows ---------- */
 .event-list { display: flex; flex-direction: column; }
+#recentActivity { max-height: 460px; overflow-y: auto; }
 .event-row {
   display: flex; align-items: center; gap: 16px;
   padding: 16px 24px;
@@ -1562,6 +1617,7 @@ dialog.modal::backdrop {
    equivalent of "circling the day" */
 .calendar-day {
   display: flex; flex-direction: column; align-items: center;
+  position: relative; z-index: 0;
   gap: 7px;
   padding: 13px 6px 11px;
   border: 1px solid var(--border);
@@ -1589,9 +1645,25 @@ dialog.modal::backdrop {
   font-variant-numeric: tabular-nums;
   transition: color 0.24s ease;
 }
-/* Bar length is the day's level, filled with that weekday's own gradient */
+/* Graduated colour wash: the cell itself is tinted by the day's attendance rate */
+.calendar-day::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--tint-fill, var(--brand-gradient));
+  opacity: 0;
+  transition: background 0.24s ease, opacity 0.35s ease;
+}
+.calendar-day[data-level="1"]::before { opacity: 0.08; }
+.calendar-day[data-level="2"]::before { opacity: 0.15; }
+.calendar-day[data-level="3"]::before { opacity: 0.23; }
+.calendar-day[data-level="4"]::before { opacity: 0.32; }
+.calendar-day.selected::before { display: none; }
+
+/* Bar length is the day's attendance rate, filled with that weekday's own gradient */
 .calendar-day-bar {
-  width: 100%; height: 5px;
+  width: 100%; height: 3px;
   border-radius: var(--radius-pill);
   background: var(--border);
   overflow: hidden;
@@ -1958,7 +2030,7 @@ dialog.modal::backdrop {
   .calendar-day-abbr { display: block; }
   .calendar-day-name { font-size: 9px; letter-spacing: 0.06em; }
   .calendar-day-num { font-size: 16px; }
-  .calendar-day-bar { height: 4px; }
+  .calendar-day-bar { height: 3px; }
   .calendar-months { margin-bottom: 12px; padding-bottom: 10px; }
   .calendar-month { font-size: 16px; }
   .calendar-range { margin-left: 0; }

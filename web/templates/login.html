@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="/static/app.css?v=20260930a">
+  <link rel="stylesheet" href="/static/app.css?v=20260930b">
   <title>Sign in · Verunum</title>
 </head>
 <body class="login mono-theme">
@@ -19,7 +19,7 @@
     <form method="post" action="/auth/login">
       <label style="color: var(--ink); font-weight: 600; font-size: 13px">
         Email address
-        <input name="email" type="email" required autocomplete="email" placeholder="admin@demo.local" style="border-radius: 10px; border-color: var(--border-light)">
+        <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" style="border-radius: 10px; border-color: var(--border-light)">
       </label>
 
       <label style="color: var(--ink); font-weight: 600; font-size: 13px; margin-top: 12px">
@@ -37,10 +37,6 @@
       </div>
       {{end}}
     </form>
-
-    <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-light); text-align: center; font-size: 12px; color: var(--muted)">
-      <div>Demo Admin: <strong style="color: var(--ink)">admin@demo.local</strong> / <strong style="color: var(--ink)">admin123</strong></div>
-    </div>
   </main>
 </body>
 </html>

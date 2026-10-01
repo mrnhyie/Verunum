@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Devices · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930a">
+  <link rel="stylesheet" href="/static/app.css?v=20260930b">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -31,6 +31,7 @@
     <a class="rail-link active" href="/devices"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
     <a class="rail-link" href="/rfid-cards"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
     <a class="rail-link" href="/roles"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Roles</a>
+    <a class="rail-link" href="/groups"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg> Groups</a>
     <p class="rail-label">Operations</p>
     <a class="rail-link" href="/attendance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
     <a class="rail-link" href="/settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Work hours</a>
@@ -65,6 +66,7 @@
             <tr>
               <th>Device</th>
               <th>Identifier / MAC</th>
+              <th>Group</th>
               <th>Status</th>
               <th>Last Heartbeat</th>
               <th>Pending Commands</th>
@@ -87,6 +89,21 @@
                 </span>
               </td>
               <td>
+                {{if $.Groups}}
+                {{$devGroup := .GroupID}}
+                <form method="post" action="/devices/{{.ID}}/group" style="margin:0">
+                  <select name="branch_id" onchange="this.form.submit()" class="group-select" style="border-color:var(--border-light); border-radius:9999px; padding:5px 12px; font-size:12px">
+                    <option value="">Unassigned</option>
+                    {{range $.Groups}}
+                    <option value="{{.ID}}" {{if eq .ID $devGroup}}selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                  </select>
+                </form>
+                {{else}}
+                <span class="subtle" style="color:var(--subtle); font-size:12px">—</span>
+                {{end}}
+              </td>
+              <td>
                 {{if eq .Status "online"}}
                 <span class="cell-flag positive"><span class="live-dot"></span>{{.Status}}</span>
                 {{else}}
@@ -102,7 +119,7 @@
             </tr>
             {{else}}
             <tr>
-              <td colspan="5" class="table-empty">
+              <td colspan="6" class="table-empty">
                 No hardware terminals configured for this organisation.
               </td>
             </tr>

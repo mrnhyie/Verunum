@@ -130,6 +130,11 @@ func main() {
 	admin.GET("/roles", a.rolesPage)
 	admin.POST("/roles", a.createRole)
 	admin.POST("/roles/:id/delete", a.deleteRole)
+	admin.GET("/groups", a.groupsPage)
+	admin.POST("/groups", a.createGroup)
+	admin.POST("/groups/:id", a.updateGroup)
+	admin.POST("/groups/:id/delete", a.deleteGroup)
+	admin.POST("/devices/:id/group", a.assignDeviceGroup)
 	admin.POST("/attendance/:id/correct", a.correctAttendance)
 	admin.POST("/sms/templates", a.createTemplate)
 	admin.GET("/account/password", a.changePasswordPage)
@@ -885,7 +890,32 @@ func (a *app) dashboard(c *gin.Context) {
 	a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, today+"%").Scan(&present)
 	a.db.QueryRow("SELECT count(*) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ? AND attendance_status='late'", org, today+"%").Scan(&late)
 	a.db.QueryRow("SELECT count(*) FROM devices WHERE organization_id=? AND status='online'", org).Scan(&online)
-	rows, _ := a.db.Query("SELECT u.uuid,u.full_name,e.event_type,e.timestamp,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? ORDER BY e.id DESC LIMIT 10", org)
+	groupsToday := []gin.H{}
+	groupRows, _ := a.db.Query(`SELECT b.id, b.name,
+		(SELECT count(*) FROM users u WHERE u.branch_id=b.id AND u.organization_id=b.organization_id AND u.status='active'),
+		(SELECT count(DISTINCT e.user_id) FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE u.branch_id=b.id AND e.organization_id=b.organization_id AND e.timestamp LIKE ?)
+		FROM branches b WHERE b.organization_id=? ORDER BY b.name`, today+"%", org)
+	if groupRows != nil {
+		for groupRows.Next() {
+			var id int
+			var name string
+			var members, present int
+			groupRows.Scan(&id, &name, &members, &present)
+			pct := 0
+			if members > 0 {
+				pct = present * 100 / members
+			}
+			if present > 0 && pct < 8 {
+				pct = 8
+			}
+			if pct > 100 {
+				pct = 100
+			}
+			groupsToday = append(groupsToday, gin.H{"ID": id, "Name": name, "Members": members, "Present": present, "Pct": pct})
+		}
+		groupRows.Close()
+	}
+	rows, _ := a.db.Query("SELECT u.uuid,u.full_name,e.event_type,e.timestamp,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? AND e.timestamp LIKE ? ORDER BY e.id DESC LIMIT 250", org, today+"%")
 	defer rows.Close()
 	events := []gin.H{}
 	for rows.Next() {
@@ -893,7 +923,7 @@ func (a *app) dashboard(c *gin.Context) {
 		rows.Scan(&uuid, &n, &ev, &t, &s)
 		events = append(events, gin.H{"UserID": uuid, "Name": n, "Event": ev, "Time": t, "Status": s})
 	}
-	c.HTML(200, "dashboard.html", gin.H{"Title": "Dashboard", "Present": present, "Late": late, "Online": online, "Events": events, "OrgID": org})
+	c.HTML(200, "dashboard.html", gin.H{"Title": "Dashboard", "Present": present, "Late": late, "Online": online, "Events": events, "OrgID": org, "Groups": groupsToday})
 }
 
 // roleSlug normalises a role label ("Gate Marshall") to the value stored on
@@ -1011,12 +1041,14 @@ func (a *app) usersPage(c *gin.Context) {
 	roles := a.roleList(a.org(c))
 	labels := roleNameMap(roles)
 	devices := a.orgDeviceList(c)
+	groups := a.groupList(a.org(c))
 	q := strings.TrimSpace(c.Query("q"))
 	// phone/email are nullable; a bare NULL aborts rows.Scan and silently
 	// blanks every field after it in the rendered row.
 	query := `SELECT id,full_name,coalesce(email,''),coalesce(phone,''),role,fingerprint_status,status,uuid,
 		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='issued'),
-		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='pending')
+		(SELECT count(*) FROM rfid_cards rc WHERE rc.user_id=users.id AND rc.organization_id=users.organization_id AND rc.status='pending'),
+		coalesce((SELECT b.name FROM branches b WHERE b.id=users.branch_id),''),coalesce(branch_id,0)
 		FROM users WHERE organization_id=?`
 	args := []any{a.org(c)}
 	if q != "" {
@@ -1028,19 +1060,19 @@ func (a *app) usersPage(c *gin.Context) {
 	defer rows.Close()
 	users := []gin.H{}
 	for rows.Next() {
-		var id, cards, pending int
-		var n, e, p, r, f, s, u string
-		rows.Scan(&id, &n, &e, &p, &r, &f, &s, &u, &cards, &pending)
+		var id, cards, pending, groupID int
+		var n, e, p, r, f, s, u, g string
+		rows.Scan(&id, &n, &e, &p, &r, &f, &s, &u, &cards, &pending, &g, &groupID)
 		label := labels[r]
 		if label == "" && r != "" {
 			label = roleLabel(r)
 		}
-		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "RoleLabel": label, "Fingerprint": f, "Status": s, "UUID": u, "Cards": cards, "PendingCards": pending})
+		users = append(users, gin.H{"ID": id, "Name": n, "Email": e, "Phone": p, "Role": r, "RoleLabel": label, "Fingerprint": f, "Status": s, "UUID": u, "Cards": cards, "PendingCards": pending, "Group": g, "GroupID": groupID})
 	}
-	c.HTML(200, "users.html", gin.H{"Title": "Users", "Users": users, "Query": q, "Devices": devices, "Roles": roles})
+	c.HTML(200, "users.html", gin.H{"Title": "Users", "Users": users, "Query": q, "Devices": devices, "Roles": roles, "Groups": groups})
 }
 func (a *app) newUserPage(c *gin.Context) {
-	c.HTML(200, "user_form.html", gin.H{"Title": "Add person", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Person": nil})
+	c.HTML(200, "user_form.html", gin.H{"Title": "Add person", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Groups": a.groupList(a.org(c)), "Person": nil})
 }
 func (a *app) userPage(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -1049,11 +1081,12 @@ func (a *app) userPage(c *gin.Context) {
 		return
 	}
 	var name, email, phone, role, fp, status, publicID string
-	if a.db.QueryRow("SELECT full_name,coalesce(email,''),coalesce(phone,''),role,fingerprint_status,status,uuid FROM users WHERE id=? AND organization_id=?", id, a.org(c)).Scan(&name, &email, &phone, &role, &fp, &status, &publicID) != nil {
+	var groupID int
+	if a.db.QueryRow("SELECT full_name,coalesce(email,''),coalesce(phone,''),role,fingerprint_status,status,uuid,coalesce(branch_id,0) FROM users WHERE id=? AND organization_id=?", id, a.org(c)).Scan(&name, &email, &phone, &role, &fp, &status, &publicID, &groupID) != nil {
 		c.Status(404)
 		return
 	}
-	c.HTML(200, "user_form.html", gin.H{"Title": "Add fingerprint", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Person": gin.H{"ID": id, "Name": name, "Email": email, "Phone": phone, "Role": role, "Fingerprint": fp, "Status": status, "UUID": publicID}})
+	c.HTML(200, "user_form.html", gin.H{"Title": "Add fingerprint", "Devices": a.orgDeviceList(c), "Roles": a.roleList(a.org(c)), "Groups": a.groupList(a.org(c)), "Person": gin.H{"ID": id, "Name": name, "Email": email, "Phone": phone, "Role": role, "Fingerprint": fp, "Status": status, "UUID": publicID, "GroupID": groupID}})
 }
 
 func (a *app) rolesPage(c *gin.Context) {
@@ -1142,6 +1175,201 @@ func (a *app) deleteRole(c *gin.Context) {
 	c.Status(204)
 }
 
+// groupList reuses the branches table as organisation "groups" (departments,
+// blocks, campuses): each group can hold members and devices, and its rows
+// double as the scope for per-group attendance views.
+func (a *app) groupList(org int) []gin.H {
+	rows, err := a.db.Query(`SELECT b.id,b.name,coalesce(b.location,''),
+		(SELECT count(*) FROM users u WHERE u.branch_id=b.id AND u.organization_id=b.organization_id),
+		(SELECT count(*) FROM devices d WHERE d.branch_id=b.id AND d.organization_id=b.organization_id)
+		FROM branches b WHERE b.organization_id=? ORDER BY b.name`, org)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	items := []gin.H{}
+	for rows.Next() {
+		var id, members, devices int
+		var name, location string
+		rows.Scan(&id, &name, &location, &members, &devices)
+		items = append(items, gin.H{"ID": id, "Name": name, "Location": location, "Members": members, "Devices": devices})
+	}
+	return items
+}
+
+func (a *app) groupsPage(c *gin.Context) {
+	if c.MustGet("claims").(claims).Role == "super_admin" {
+		c.Redirect(http.StatusFound, "/admin/organizations")
+		return
+	}
+	c.HTML(200, "groups.html", gin.H{"Title": "Groups", "Groups": a.groupList(a.org(c)), "Error": c.Query("error")})
+}
+
+func (a *app) createGroup(c *gin.Context) {
+	var in struct {
+		Name     string `form:"name" json:"name"`
+		Location string `form:"location" json:"location"`
+	}
+	_ = c.ShouldBind(&in)
+	in.Name = strings.TrimSpace(in.Name)
+	in.Location = strings.TrimSpace(in.Location)
+	org := a.org(c)
+	if in.Name == "" {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/groups?error=invalid")
+			return
+		}
+		c.JSON(400, gin.H{"error": "name required"})
+		return
+	}
+	var dupe int
+	_ = a.db.QueryRow("SELECT count(*) FROM branches WHERE organization_id=? AND lower(name)=lower(?)", org, in.Name).Scan(&dupe)
+	if dupe > 0 {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/groups?error=duplicate")
+			return
+		}
+		c.JSON(400, gin.H{"error": "group already exists"})
+		return
+	}
+	res, err := a.db.Exec("INSERT INTO branches(organization_id,name,location) VALUES(?,?,?)", org, in.Name, in.Location)
+	if err != nil {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/groups?error=invalid")
+			return
+		}
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	id, _ := res.LastInsertId()
+	a.audit(c, "create", "group", id, "", in)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/groups")
+		return
+	}
+	c.JSON(201, gin.H{"id": id, "name": in.Name, "location": in.Location})
+}
+
+func (a *app) updateGroup(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(404)
+		return
+	}
+	var in struct {
+		Name     string `form:"name" json:"name"`
+		Location string `form:"location" json:"location"`
+	}
+	_ = c.ShouldBind(&in)
+	in.Name = strings.TrimSpace(in.Name)
+	in.Location = strings.TrimSpace(in.Location)
+	org := a.org(c)
+	if in.Name == "" {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/groups?error=invalid")
+			return
+		}
+		c.JSON(400, gin.H{"error": "name required"})
+		return
+	}
+	var dupe int
+	_ = a.db.QueryRow("SELECT count(*) FROM branches WHERE organization_id=? AND lower(name)=lower(?) AND id<>?", org, in.Name, id).Scan(&dupe)
+	if dupe > 0 {
+		if wantsHTML(c) {
+			c.Redirect(http.StatusFound, "/groups?error=duplicate")
+			return
+		}
+		c.JSON(400, gin.H{"error": "group already exists"})
+		return
+	}
+	res, err := a.db.Exec("UPDATE branches SET name=?,location=? WHERE id=? AND organization_id=?", in.Name, in.Location, id, org)
+	if err != nil {
+		c.Status(500)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.Status(404)
+		return
+	}
+	a.audit(c, "update", "group", int64(id), "", in)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/groups")
+		return
+	}
+	c.JSON(200, gin.H{"id": id, "name": in.Name, "location": in.Location})
+}
+
+// deleteGroup removes the group but keeps its people and devices: both are
+// unassigned (branch_id=NULL) so nothing is lost when a department is retired.
+func (a *app) deleteGroup(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(404)
+		return
+	}
+	org := a.org(c)
+	var name string
+	if a.db.QueryRow("SELECT name FROM branches WHERE id=? AND organization_id=?", id, org).Scan(&name) != nil {
+		c.Status(404)
+		return
+	}
+	_, _ = a.db.Exec("UPDATE users SET branch_id=NULL WHERE organization_id=? AND branch_id=?", org, id)
+	_, _ = a.db.Exec("UPDATE devices SET branch_id=NULL WHERE organization_id=? AND branch_id=?", org, id)
+	res, err := a.db.Exec("DELETE FROM branches WHERE id=? AND organization_id=?", id, org)
+	if err != nil {
+		c.Status(500)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.Status(404)
+		return
+	}
+	a.audit(c, "delete", "group", int64(id), "", gin.H{"name": name})
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/groups")
+		return
+	}
+	c.Status(204)
+}
+
+func (a *app) assignDeviceGroup(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(404)
+		return
+	}
+	var in struct {
+		BranchID int `form:"branch_id" json:"branch_id"`
+	}
+	_ = c.ShouldBind(&in)
+	org := a.org(c)
+	var branchID any
+	if in.BranchID > 0 {
+		var ok int
+		_ = a.db.QueryRow("SELECT count(*) FROM branches WHERE id=? AND organization_id=?", in.BranchID, org).Scan(&ok)
+		if ok == 0 {
+			c.Status(404)
+			return
+		}
+		branchID = in.BranchID
+	}
+	res, err := a.db.Exec("UPDATE devices SET branch_id=? WHERE id=? AND organization_id=?", branchID, id, org)
+	if err != nil {
+		c.Status(500)
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.Status(404)
+		return
+	}
+	a.audit(c, "update", "device_group", int64(id), "", in)
+	if wantsHTML(c) {
+		c.Redirect(http.StatusFound, "/devices")
+		return
+	}
+	c.Status(204)
+}
+
 func (a *app) orgDeviceList(c *gin.Context) []gin.H {
 	rows, err := a.db.Query("SELECT id,name,status FROM devices WHERE organization_id=? ORDER BY name", a.org(c))
 	if err != nil {
@@ -1167,8 +1395,9 @@ func (a *app) devicesPage(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/admin/organizations")
 		return
 	}
+	groups := a.groupList(a.org(c))
 	q := strings.TrimSpace(c.Query("q"))
-	query := "SELECT id,name,serial_number,status,coalesce(last_heartbeat,''),(SELECT count(*) FROM device_commands dc WHERE dc.device_id=devices.id AND dc.organization_id=devices.organization_id AND dc.status='pending') FROM devices WHERE organization_id=?"
+	query := "SELECT id,name,serial_number,status,coalesce(last_heartbeat,''),(SELECT count(*) FROM device_commands dc WHERE dc.device_id=devices.id AND dc.organization_id=devices.organization_id AND dc.status='pending'),coalesce((SELECT b.name FROM branches b WHERE b.id=devices.branch_id),''),coalesce(branch_id,0) FROM devices WHERE organization_id=?"
 	args := []any{a.org(c)}
 	if q != "" {
 		query += " AND (lower(name) LIKE ? OR lower(serial_number) LIKE ?)"
@@ -1178,15 +1407,15 @@ func (a *app) devicesPage(c *gin.Context) {
 	defer rows.Close()
 	items := []gin.H{}
 	for rows.Next() {
-		var id, p int
-		var n, s, st, h string
-		rows.Scan(&id, &n, &s, &st, &h, &p)
+		var id, p, groupID int
+		var n, s, st, h, g string
+		rows.Scan(&id, &n, &s, &st, &h, &p, &g, &groupID)
 		if a.hub.Connected(id) {
 			st = "online"
 		}
-		items = append(items, gin.H{"ID": id, "Name": n, "Serial": s, "Status": st, "Heartbeat": h, "Pending": p, "Online": a.hub.Connected(id)})
+		items = append(items, gin.H{"ID": id, "Name": n, "Serial": s, "Status": st, "Heartbeat": h, "Pending": p, "Online": a.hub.Connected(id), "Group": g, "GroupID": groupID})
 	}
-	c.HTML(200, "devices.html", gin.H{"Title": "Devices", "Devices": items, "Query": q})
+	c.HTML(200, "devices.html", gin.H{"Title": "Devices", "Devices": items, "Query": q, "Groups": groups})
 }
 func (a *app) newDevicePage(c *gin.Context) {
 	c.HTML(200, "device_form.html", gin.H{"Title": "Register device"})
@@ -1325,7 +1554,8 @@ func (a *app) settingsError(c *gin.Context, code string) {
 }
 
 // calendarDay is one cell of the attendance week strip. Level is the day's
-// distinct-scan count as a percentage of the busiest day in the window.
+// attendance rate (distinct scans as a percentage of active members). Tier
+// buckets that rate 0-4 so the cell can carry a graduated colour wash.
 type calendarDay struct {
 	Date        string
 	Label       string
@@ -1335,6 +1565,7 @@ type calendarDay struct {
 	Day         int
 	Count       int
 	Level       int
+	Tier        int
 	Tint        int
 	HasScans    bool
 	Today       bool
@@ -1344,6 +1575,8 @@ type calendarDay struct {
 
 func (a *app) attendancePage(c *gin.Context) {
 	org := a.org(c)
+	groups := a.groupList(org)
+	groupID, _ := strconv.Atoi(c.Query("group_id"))
 	selected := c.Query("date")
 	if selected == "" {
 		selected = time.Now().Format("2006-01-02")
@@ -1353,6 +1586,10 @@ func (a *app) attendancePage(c *gin.Context) {
 	}
 	q := "SELECT e.id,u.uuid,u.full_name,d.name,e.event_type,e.timestamp,e.verification_method,e.attendance_status FROM attendance_events e JOIN users u ON u.id=e.user_id JOIN devices d ON d.id=e.device_id WHERE e.organization_id=? AND e.timestamp LIKE ?"
 	args := []any{org, selected + "%"}
+	if groupID > 0 {
+		q += " AND u.branch_id=?"
+		args = append(args, groupID)
+	}
 	if userID := c.Query("user_id"); userID != "" {
 		q += " AND e.user_id=?"
 		args = append(args, userID)
@@ -1372,7 +1609,14 @@ func (a *app) attendancePage(c *gin.Context) {
 		items = append(items, gin.H{"ID": id, "UserID": uuid, "User": u, "Device": d, "Event": e, "Time": t, "Method": m, "Status": s})
 	}
 	absent := []gin.H{}
-	absentRows, _ := a.db.Query("SELECT id,full_name,coalesce(email,'') FROM users u WHERE organization_id=? AND status='active' AND NOT EXISTS (SELECT 1 FROM attendance_events e WHERE e.organization_id=u.organization_id AND e.user_id=u.id AND e.timestamp LIKE ?) ORDER BY full_name", org, selected+"%")
+	absentQ := "SELECT id,full_name,coalesce(email,'') FROM users u WHERE organization_id=? AND status='active' AND NOT EXISTS (SELECT 1 FROM attendance_events e WHERE e.organization_id=u.organization_id AND e.user_id=u.id AND e.timestamp LIKE ?)"
+	absentArgs := []any{org, selected + "%"}
+	if groupID > 0 {
+		absentQ += " AND u.branch_id=?"
+		absentArgs = append(absentArgs, groupID)
+	}
+	absentQ += " ORDER BY full_name"
+	absentRows, _ := a.db.Query(absentQ, absentArgs...)
 	defer absentRows.Close()
 	for absentRows.Next() {
 		var id int
@@ -1389,7 +1633,11 @@ func (a *app) attendancePage(c *gin.Context) {
 		d := base.AddDate(0, 0, i)
 		key := d.Format("2006-01-02")
 		var count int
-		_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, key+"%").Scan(&count)
+		if groupID > 0 {
+			_ = a.db.QueryRow("SELECT count(DISTINCT e.user_id) FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? AND e.timestamp LIKE ? AND u.branch_id=?", org, key+"%", groupID).Scan(&count)
+		} else {
+			_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ?", org, key+"%").Scan(&count)
+		}
 		if count > maxCount {
 			maxCount = count
 		}
@@ -1407,13 +1655,39 @@ func (a *app) attendancePage(c *gin.Context) {
 			Selected:    key == selected,
 		})
 	}
+	var activeUsers int
+	if groupID > 0 {
+		_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=? AND status='active' AND branch_id=?", org, groupID).Scan(&activeUsers)
+	} else {
+		_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=? AND status='active'", org).Scan(&activeUsers)
+	}
 	activeDays, presentCount := 0, 0
 	for i := range days {
 		if days[i].Count > 0 {
 			activeDays++
 		}
-		if maxCount > 0 {
+		if activeUsers > 0 {
+			days[i].Level = days[i].Count * 100 / activeUsers
+		} else if maxCount > 0 {
 			days[i].Level = days[i].Count * 100 / maxCount
+		}
+		if days[i].Count > 0 && days[i].Level < 8 {
+			days[i].Level = 8
+		}
+		if days[i].Level > 100 {
+			days[i].Level = 100
+		}
+		switch {
+		case days[i].Count == 0:
+			days[i].Tier = 0
+		case days[i].Level <= 25:
+			days[i].Tier = 1
+		case days[i].Level <= 50:
+			days[i].Tier = 2
+		case days[i].Level <= 75:
+			days[i].Tier = 3
+		default:
+			days[i].Tier = 4
 		}
 		if i == 0 || days[i].Month != days[i-1].Month {
 			days[i].ShowMonth = true
@@ -1429,7 +1703,11 @@ func (a *app) attendancePage(c *gin.Context) {
 		monthLabel = first.Format("January") + " – " + last.Format("January 2006")
 	}
 	var lateCount int
-	_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ? AND attendance_status='late'", org, selected+"%").Scan(&lateCount)
+	if groupID > 0 {
+		_ = a.db.QueryRow("SELECT count(DISTINCT e.user_id) FROM attendance_events e JOIN users u ON u.id=e.user_id WHERE e.organization_id=? AND e.timestamp LIKE ? AND e.attendance_status='late' AND u.branch_id=?", org, selected+"%", groupID).Scan(&lateCount)
+	} else {
+		_ = a.db.QueryRow("SELECT count(DISTINCT user_id) FROM attendance_events WHERE organization_id=? AND timestamp LIKE ? AND attendance_status='late'", org, selected+"%").Scan(&lateCount)
+	}
 	view := c.Query("view")
 	if view == "absent" {
 		items = []gin.H{}
@@ -1443,6 +1721,7 @@ func (a *app) attendancePage(c *gin.Context) {
 		"NextDate": base.AddDate(0, 0, 7).Format("2006-01-02"),
 		"View":     view, "Query": c.Query("q"),
 		"SelectedIsToday": selected == today, "OrgID": org, "UserFilter": c.Query("user_id"),
+		"Groups": groups, "SelectedGroup": groupID,
 	})
 }
 func (a *app) devicesStatus(c *gin.Context) {
@@ -1854,15 +2133,15 @@ func (a *app) organizationProfilePage(c *gin.Context) {
 	var totalUsers int
 	_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=?", orgID).Scan(&totalUsers)
 
-	rows, err := a.db.Query("SELECT id, name, COALESCE(mac_address, serial_number, ''), status, COALESCE(last_seen_at, last_heartbeat, ''), created_at FROM devices WHERE organization_id=? ORDER BY id DESC", orgID)
+	rows, err := a.db.Query("SELECT id, name, COALESCE(mac_address, serial_number, ''), status, COALESCE(last_seen_at, last_heartbeat, ''), created_at, COALESCE((SELECT b.name FROM branches b WHERE b.id=devices.branch_id),'') FROM devices WHERE organization_id=? ORDER BY id DESC", orgID)
 	var devicesList []gin.H
 	var activeDevices, offlineDevices int
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var dID int
-			var dName, dMAC, dStatus, dLastSeen, dCreated string
-			_ = rows.Scan(&dID, &dName, &dMAC, &dStatus, &dLastSeen, &dCreated)
+			var dName, dMAC, dStatus, dLastSeen, dCreated, dGroup string
+			_ = rows.Scan(&dID, &dName, &dMAC, &dStatus, &dLastSeen, &dCreated, &dGroup)
 			isOnline := a.hub.Connected(dID)
 			if isOnline {
 				activeDevices++
@@ -1882,7 +2161,23 @@ func (a *app) organizationProfilePage(c *gin.Context) {
 				"IsOnline": isOnline,
 				"LastSeen": dLastSeen,
 				"Created":  dCreated,
+				"Group":    dGroup,
 			})
+		}
+	}
+
+	groupRows, err := a.db.Query(`SELECT b.id,b.name,coalesce(b.location,''),
+		(SELECT count(*) FROM users u WHERE u.branch_id=b.id AND u.organization_id=b.organization_id),
+		(SELECT count(*) FROM devices d WHERE d.branch_id=b.id AND d.organization_id=b.organization_id)
+		FROM branches b WHERE b.organization_id=? ORDER BY b.name`, orgID)
+	groupsList := []gin.H{}
+	if err == nil {
+		defer groupRows.Close()
+		for groupRows.Next() {
+			var gID, gMembers, gDevices int
+			var gName, gLocation string
+			_ = groupRows.Scan(&gID, &gName, &gLocation, &gMembers, &gDevices)
+			groupsList = append(groupsList, gin.H{"ID": gID, "Name": gName, "Location": gLocation, "Members": gMembers, "Devices": gDevices})
 		}
 	}
 
@@ -1944,6 +2239,7 @@ func (a *app) organizationProfilePage(c *gin.Context) {
 		"ActiveDevices":    activeDevices,
 		"OfflineDevices":   offlineDevices,
 		"Devices":          devicesList,
+		"Groups":           groupsList,
 		"Activity":         activityHistory,
 		"TotalScans30Days": totalScans30Days,
 		"MaxActivity":      maxCount,
@@ -2145,12 +2441,23 @@ func (a *app) createUser(c *gin.Context) {
 	if in.Role == "" {
 		in.Role = "viewer"
 	}
+	org := a.org(c)
 	var branchID any
 	if in.BranchID > 0 {
+		var ok int
+		_ = a.db.QueryRow("SELECT count(*) FROM branches WHERE id=? AND organization_id=?", in.BranchID, org).Scan(&ok)
+		if ok == 0 {
+			if wantsHTML(c) {
+				c.Redirect(http.StatusFound, "/users/new?error=group")
+				return
+			}
+			c.JSON(400, gin.H{"error": "group not found"})
+			return
+		}
 		branchID = in.BranchID
 	}
 	publicID := uuid.NewString()
-	r, e := a.db.Exec("INSERT INTO users(organization_id,branch_id,full_name,email,phone,role,uuid) VALUES(?,?,?,?,?,?,?)", a.org(c), branchID, in.FullName, in.Email, in.Phone, in.Role, publicID)
+	r, e := a.db.Exec("INSERT INTO users(organization_id,branch_id,full_name,email,phone,role,uuid) VALUES(?,?,?,?,?,?,?)", org, branchID, in.FullName, in.Email, in.Phone, in.Role, publicID)
 	if e != nil {
 		c.JSON(400, gin.H{"error": e.Error()})
 		return
@@ -2175,19 +2482,30 @@ func (a *app) updateUser(c *gin.Context) {
 		Role              string `form:"role" json:"role"`
 		Status            string `form:"status" json:"status"`
 		FingerprintStatus string `form:"fingerprint_status" json:"fingerprint_status"`
+		BranchID          int    `form:"branch_id" json:"branch_id"`
 	}
 	if c.ShouldBind(&in) != nil {
 		c.JSON(400, gin.H{"error": "invalid JSON"})
 		return
 	}
-	r, _ := a.db.Exec("UPDATE users SET full_name=?,phone=?,role=?,status=?,fingerprint_status=?,updated_at=? WHERE id=? AND organization_id=?", in.FullName, in.Phone, in.Role, in.Status, in.FingerprintStatus, time.Now().UTC().Format(time.RFC3339), id, a.org(c))
+	org := a.org(c)
+	var branchID any
+	if in.BranchID > 0 {
+		var ok int
+		_ = a.db.QueryRow("SELECT count(*) FROM branches WHERE id=? AND organization_id=?", in.BranchID, org).Scan(&ok)
+		if ok == 0 {
+			c.Status(404)
+			return
+		}
+		branchID = in.BranchID
+	}
+	r, _ := a.db.Exec("UPDATE users SET full_name=?,phone=?,role=?,status=?,fingerprint_status=?,branch_id=?,updated_at=? WHERE id=? AND organization_id=?", in.FullName, in.Phone, in.Role, in.Status, in.FingerprintStatus, branchID, time.Now().UTC().Format(time.RFC3339), id, org)
 	n, _ := r.RowsAffected()
 	if n == 0 {
 		c.Status(404)
 		return
 	}
 	a.audit(c, "update", "user", int64(id), "", in)
-	org := a.org(c)
 	var userUUID string
 	_ = a.db.QueryRow("SELECT uuid FROM users WHERE id=? AND organization_id=?", id, org).Scan(&userUUID)
 	if _, err := a.hub.QueueUserUpdate(org, id, userUUID); err != nil {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Attendance · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930a">
+  <link rel="stylesheet" href="/static/app.css?v=20260930b">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -26,6 +26,7 @@
     <a class="rail-link" href="/devices"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
     <a class="rail-link" href="/rfid-cards"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
     <a class="rail-link" href="/roles"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Roles</a>
+    <a class="rail-link" href="/groups"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg> Groups</a>
     <p class="rail-label">Operations</p>
     <a class="rail-link active" href="/attendance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
     <a class="rail-link" href="/settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Work hours</a>
@@ -39,8 +40,19 @@
         <h1>Attendance Logs</h1>
         <p class="subtle" style="color:var(--muted)">Select calendar dates to inspect verified scans, arrivals, and absence rates.</p>
       </div>
-      <div style="display: flex; gap: 12px">
-        <a class="btn-pill btn-pill-secondary" href="/attendance?date={{.SelectedDate}}&view=absent">
+      <div style="display: flex; gap: 12px; align-items: center">
+        {{if .Groups}}
+        <form method="get" action="/attendance" style="margin:0">
+          <input type="hidden" name="date" value="{{.SelectedDate}}">
+          <select name="group_id" onchange="this.form.submit()" style="border-radius:9999px; padding:7px 14px; border-color:var(--border-light); font-size:13px">
+            <option value="">All groups</option>
+            {{range .Groups}}
+            <option value="{{.ID}}" {{if eq .ID $.SelectedGroup}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </form>
+        {{end}}
+        <a class="btn-pill btn-pill-secondary" href="/attendance?date={{.SelectedDate}}&view=absent{{if .SelectedGroup}}&group_id={{.SelectedGroup}}{{end}}">
           <svg viewBox="0 0 24 24"><path d="M15 19a6 6 0 0 0-12 0"/><circle cx="9" cy="8" r="3.2"/><path d="m16.5 12.5 2 2 4-4"/></svg>
           Absent list
         </a>
@@ -54,7 +66,7 @@
     <section class="metric-grid">
       <article class="mono-card metric-card">
         <div class="metric-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5.5"/></svg>
         </div>
         <div>
           <span>Present</span>
@@ -65,7 +77,7 @@
 
       <article class="mono-card metric-card">
         <div class="metric-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M14.59 8L12 10.59 9.41 8 8 9.41 10.59 12 8 14.59 9.41 16 12 13.41 14.59 16 16 14.59 13.41 12 16 9.41 14.59 8zM12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
         </div>
         <div>
           <span>Absent</span>
@@ -76,7 +88,7 @@
 
       <article class="mono-card metric-card">
         <div class="metric-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
         </div>
         <div>
           <span>Late arrivals</span>
@@ -87,7 +99,7 @@
 
       <article class="mono-card metric-card">
         <div class="metric-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>
         </div>
         <div>
           <span>Events logged</span>
@@ -111,10 +123,10 @@
           </span>
         </div>
         <div class="calendar-nav">
-          <a href="/attendance?date={{.PrevDate}}" aria-label="Previous week" title="Previous week">
+          <a href="/attendance?date={{.PrevDate}}{{if .SelectedGroup}}&group_id={{.SelectedGroup}}{{end}}" aria-label="Previous week" title="Previous week">
             <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
           </a>
-          <a href="/attendance?date={{.NextDate}}" aria-label="Next week" title="Next week">
+          <a href="/attendance?date={{.NextDate}}{{if .SelectedGroup}}&group_id={{.SelectedGroup}}{{end}}" aria-label="Next week" title="Next week">
             <svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
           </a>
         </div>
@@ -128,9 +140,10 @@
         <div class="calendar-grid">
           {{range $i, $d := .Days}}
           <a class="calendar-day {{if $d.HasScans}}has-scans{{else}}is-empty{{end}} {{if $d.Today}}is-today{{end}} {{if $d.Selected}}selected{{end}}"
-             href="/attendance?date={{$d.Date}}"
+             href="/attendance?date={{$d.Date}}{{if $.SelectedGroup}}&group_id={{$.SelectedGroup}}{{end}}"
              style="--i:{{$i}}; --lvl:{{$d.Level}}"
              data-tint="{{$d.Tint}}"
+             data-level="{{$d.Tier}}"
              title="{{$d.Label}} · {{$d.Count}} present">
             <span class="calendar-day-name calendar-day-long">{{$d.WeekdayLong}}</span>
             <span class="calendar-day-name calendar-day-abbr">{{$d.Weekday}}</span>
@@ -144,7 +157,7 @@
           <span class="legend-item"><i class="legend-dot present"></i> Scans recorded</span>
           <span class="legend-item"><i class="legend-dot empty"></i> No scans</span>
           <span class="legend-item"><i class="legend-dot picked"></i> Selected day</span>
-          <span class="legend-item legend-level"><i></i> Bar length = attendance level</span>
+          <span class="legend-item legend-level"><i></i> Fill &amp; shade = day's attendance rate</span>
         </div>
       </div>
     </section>
@@ -175,7 +188,7 @@
               <td><strong style="color:var(--ink)">{{.Name}}</strong></td>
               <td>{{.Email}}</td>
               <td style="text-align:right">
-                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/attendance?date={{$.SelectedDate}}&user_id={{.ID}}">View Attendance</a>
+                <a class="btn-pill btn-pill-secondary" style="padding:4px 12px; font-size:11px" href="/attendance?date={{$.SelectedDate}}&user_id={{.ID}}{{if $.SelectedGroup}}&group_id={{$.SelectedGroup}}{{end}}">View Attendance</a>
               </td>
             </tr>
             {{else}}
@@ -230,7 +243,7 @@
     });
   </script>
 
-  {{if and .SelectedIsToday (ne .View "absent") (not .Query) (not .UserFilter)}}
+  {{if and .SelectedIsToday (ne .View "absent") (not .Query) (not .UserFilter) (not .SelectedGroup)}}
   <script>
     (() => {
       const orgID = "{{.OrgID}}";
