@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Support · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20261001a">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/dashboard">
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Platform Administration / Support</span>
+    <div class="topbar-actions">
+      <span class="avatar">SA</span>
+      <form class="logout-form" action="/auth/logout" method="post">
+        <button type="submit" title="Log out" aria-label="Log out">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <p class="rail-label">Platform</p>
+    <a class="rail-link" href="/dashboard">
+      <svg viewBox="0 0 24 24"><path d="m3 13 9-9 9 9v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      Dashboard
+    </a>
+    <p class="rail-label">Customer Workspaces</p>
+    <a class="rail-link" href="/platform/organisations">
+      <svg viewBox="0 0 24 24"><path d="M4 20v-9l8-5 8 5v9M8 20v-5h8v5M10 10h4"/></svg>
+      Organisations
+    </a>
+    <a class="rail-link" href="/platform/device-provisioning">
+      <svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h.01M17 7h.01M7 17h.01M17 17h.01M12 12h.01"/></svg>
+      Device Provisioning
+    </a>
+    <a class="rail-link" href="/admin/organizations/new">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      New Organisation
+    </a>
+    <p class="rail-label">Communication</p>
+    <a class="rail-link active" href="/platform/support">
+      <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.3-2.7A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>
+      Support Inbox
+      <span class="rail-badge" id="railUnread" hidden></span>
+    </a>
+    <div class="rail-footer">
+      <form class="rail-logout" action="/auth/logout" method="post">
+        <button type="submit" style="color:var(--muted)">
+          <svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-6"/></svg>
+          Log out
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="dashboard-main support-main">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">Communication</p>
+        <h1>Support Inbox</h1>
+        <p class="subtle" style="color:var(--muted)">Messages from customer dashboards arrive live. Replies pop up on their screens as they come in.</p>
+      </div>
+    </div>
+
+    <section class="support-shell">
+      <aside class="support-threads mono-card">
+        <div class="support-threads-head">
+          <strong>Conversations</strong>
+          <button type="button" class="support-refresh" id="refreshThreads" title="Refresh" aria-label="Refresh">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 4v5h-5"/></svg>
+          </button>
+        </div>
+        <div class="support-thread-list" id="threadList">
+          <p class="support-empty">Loading…</p>
+        </div>
+      </aside>
+
+      <section class="support-pane mono-card" id="supportPane">
+        <div class="support-pane-empty" id="paneEmpty">
+          <div class="support-pane-glyph">
+            <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.3-2.7A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>
+          </div>
+          <h2>Pick a conversation</h2>
+          <p>Select an organisation on the left to read their messages and reply.</p>
+        </div>
+
+        <div class="support-pane-body" id="paneBody" hidden>
+          <div class="support-pane-head">
+            <div>
+              <strong id="paneOrg">Organisation</strong>
+              <span id="paneMeta">—</span>
+            </div>
+          </div>
+          <div class="support-feed" id="supportFeed"></div>
+          <form class="support-form" id="supportForm">
+            <textarea id="supportInput" rows="2" placeholder="Write a reply…  (Enter to send, Shift+Enter for a new line)" maxlength="4000" required></textarea>
+            <button type="submit" class="btn-pill btn-pill-primary" id="supportSendBtn">
+              <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+              Send
+            </button>
+          </form>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/static/toast.js?v=20261001a"></script>
+  <script>
+    (() => {
+      const threadList = document.getElementById('threadList');
+      const railUnread = document.getElementById('railUnread');
+      const paneEmpty = document.getElementById('paneEmpty');
+      const paneBody = document.getElementById('paneBody');
+      const paneOrg = document.getElementById('paneOrg');
+      const paneMeta = document.getElementById('paneMeta');
+      const feed = document.getElementById('supportFeed');
+      const form = document.getElementById('supportForm');
+      const input = document.getElementById('supportInput');
+      const sendBtn = document.getElementById('supportSendBtn');
+
+      let currentOrg = {{if .SelectedOrg}}{{.SelectedOrg}}{{else}}null{{end}};
+      let threads = [];
+
+      const timeOf = iso => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      };
+      const dayOf = iso => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return isNaN(d) ? '' : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+      };
+      const esc = (el, text) => { el.textContent = text || ''; return el; };
+
+      function renderThreads() {
+        threadList.textContent = '';
+        if (!threads.length) {
+          const p = document.createElement('p');
+          p.className = 'support-empty';
+          p.textContent = 'No conversations yet. They start when a customer writes in.';
+          threadList.appendChild(p);
+          return;
+        }
+        let unreadTotal = 0;
+        threads.forEach(t => {
+          unreadTotal += t.unread || 0;
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'support-thread-item' + (String(t.org_id) === String(currentOrg) ? ' active' : '');
+          item.dataset.org = t.org_id;
+
+          const top = document.createElement('div');
+          top.className = 'support-thread-top';
+          const name = document.createElement('strong');
+          esc(name, t.org_name || 'Organisation');
+          top.appendChild(name);
+          if (t.unread > 0) {
+            const dot = document.createElement('span');
+            dot.className = 'support-unread-dot';
+            dot.textContent = t.unread;
+            top.appendChild(dot);
+          }
+          item.appendChild(top);
+
+          const prev = document.createElement('span');
+          prev.className = 'support-thread-preview';
+          esc(prev, t.last_body || '');
+          item.appendChild(prev);
+
+          const when = document.createElement('span');
+          when.className = 'support-thread-time';
+          esc(when, dayOf(t.last_at) + ' · ' + timeOf(t.last_at));
+          item.appendChild(when);
+
+          item.addEventListener('click', () => selectThread(t.org_id, t.org_name));
+          threadList.appendChild(item);
+        });
+        if (unreadTotal > 0) {
+          railUnread.textContent = unreadTotal > 9 ? '9+' : String(unreadTotal);
+          railUnread.hidden = false;
+        } else {
+          railUnread.hidden = true;
+        }
+      }
+
+      async function loadThreads() {
+        try {
+          const res = await fetch('/api/v1/platform/support/threads');
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          threads = data.threads || [];
+          renderThreads();
+        } catch {
+          threadList.textContent = '';
+          const p = document.createElement('p');
+          p.className = 'support-empty';
+          p.textContent = 'Could not load conversations.';
+          threadList.appendChild(p);
+        }
+      }
+
+      function msgBubble(m) {
+        const row = document.createElement('div');
+        row.className = 'support-msg ' + (m.sender === 'org' ? 'from-org' : 'from-support');
+        const body = document.createElement('div');
+        body.className = 'support-msg-body';
+        esc(body, m.body);
+        row.appendChild(body);
+        const meta = document.createElement('span');
+        meta.className = 'support-msg-meta';
+        esc(meta, (m.author || (m.sender === 'org' ? 'Customer' : 'Support')) + ' · ' + dayOf(m.created_at) + ' ' + timeOf(m.created_at));
+        row.appendChild(meta);
+        return row;
+      }
+
+      function renderedIds() {
+        return new Set([...feed.querySelectorAll('[data-mid]')].map(el => el.dataset.mid));
+      }
+
+      function appendMessages(msgs) {
+        const have = renderedIds();
+        let added = 0;
+        msgs.forEach(m => {
+          if (have.has(String(m.id))) return;
+          feed.appendChild(msgBubble(m));
+          feed.lastElementChild.dataset.mid = m.id;
+          added++;
+        });
+        if (added) feed.scrollTop = feed.scrollHeight;
+        return added;
+      }
+
+      async function selectThread(orgId, orgName) {
+        currentOrg = orgId;
+        document.querySelectorAll('.support-thread-item').forEach(el => {
+          el.classList.toggle('active', String(el.dataset.org) === String(orgId));
+        });
+        paneEmpty.hidden = true;
+        paneBody.hidden = false;
+        esc(paneOrg, orgName || 'Organisation');
+        paneMeta.textContent = 'Loading…';
+        feed.textContent = '';
+        try {
+          const res = await fetch('/api/v1/platform/support/messages?org_id=' + encodeURIComponent(orgId));
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          esc(paneOrg, data.org_name || orgName || 'Organisation');
+          paneMeta.textContent = (data.messages || []).length + ' messages';
+          (data.messages || []).forEach(m => {
+            const b = msgBubble(m);
+            b.dataset.mid = m.id;
+            feed.appendChild(b);
+          });
+          feed.scrollTop = feed.scrollHeight;
+          const t = threads.find(x => String(x.org_id) === String(orgId));
+          if (t) { t.unread = 0; renderThreads(); }
+          input.focus();
+        } catch {
+          paneMeta.textContent = 'Could not load conversation.';
+        }
+      }
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const body = input.value.trim();
+        if (!body || !currentOrg) return;
+        sendBtn.disabled = true;
+        try {
+          const res = await fetch('/api/v1/platform/support/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ org_id: Number(currentOrg), body })
+          });
+          if (!res.ok) throw new Error();
+          const saved = await res.json();
+          const b = msgBubble(saved);
+          b.dataset.mid = saved.id;
+          feed.appendChild(b);
+          feed.scrollTop = feed.scrollHeight;
+          input.value = '';
+          input.focus();
+        } catch {
+          vtoast('Reply could not be sent.', { type: 'error', title: 'Support' });
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          form.requestSubmit();
+        }
+      });
+
+      document.getElementById('refreshThreads').addEventListener('click', loadThreads);
+
+      // Live: customers writing in
+      const source = new EventSource('/api/v1/events');
+      source.addEventListener('support.message', e => {
+        let data;
+        try { data = JSON.parse(e.data); } catch { return; }
+        if (data.sender !== 'org') return;
+        vtoast(data.message || 'New support message', {
+          type: 'chat',
+          title: (data.org_name || 'Customer') + ' · Support',
+          onClick: () => { selectThread(data.org_id, data.org_name); }
+        });
+        if (String(data.org_id) === String(currentOrg) && data.message_id) {
+          if (!renderedIds().has(String(data.message_id))) {
+            const b = msgBubble({ id: data.message_id, sender: 'org', author: data.user_name, body: data.message, created_at: data.timestamp });
+            b.dataset.mid = data.message_id;
+            feed.appendChild(b);
+            feed.scrollTop = feed.scrollHeight;
+          }
+        }
+        loadThreads();
+      });
+
+      loadThreads().then(() => {
+        if (currentOrg) {
+          const t = threads.find(x => String(x.org_id) === String(currentOrg));
+          selectThread(currentOrg, t ? t.org_name : '');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

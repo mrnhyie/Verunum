@@ -209,3 +209,13 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     after_json TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS support_messages (
+    id INTEGER PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations (id),
+    sender TEXT NOT NULL DEFAULT 'org',
+    author_name TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_by_org INTEGER NOT NULL DEFAULT 0,
+    read_by_support INTEGER NOT NULL DEFAULT 0
+);

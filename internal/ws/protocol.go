@@ -134,9 +134,12 @@ type SSEEvent struct {
 	DeviceName string `json:"device_name,omitempty"`
 	MACAddress string `json:"mac_address,omitempty"`
 	OrgID      string `json:"org_id,omitempty"`
+	OrgName    string `json:"org_name,omitempty"`
 	Method     string `json:"method,omitempty"`
 	Timestamp  string `json:"timestamp,omitempty"`
 	Message    string `json:"message,omitempty"`
+	MessageID  int64  `json:"message_id,omitempty"`
+	Sender     string `json:"sender,omitempty"`
 }
 
 func MarshalEnvelope(typ, requestID, status string, payload any) ([]byte, error) {

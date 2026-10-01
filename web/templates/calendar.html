@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Attendance Calendar · Verunum</title>
+  <link rel="stylesheet" href="/static/app.css?v=20261001a">
+</head>
+<body class="app-shell mono-theme">
+  <header class="topbar">
+    <a class="brand" href="/dashboard">
+      <img class="brand-logo" src="/static/logo.svg" alt="Verunum">
+      <span>verunum</span>
+    </a>
+    <span class="breadcrumb">/ Operations / Attendance / Calendar</span>
+    <div class="topbar-actions">
+      <span class="avatar">DA</span>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <p class="rail-label">Workspace</p>
+    <a class="rail-link" href="/dashboard"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg> Dashboard</a>
+    <p class="rail-label">Management</p>
+    <a class="rail-link" href="/users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 5.5a3 3 0 0 1 0 5.8M17 14c2.3.7 4 2.9 4 5.5"/></svg> People</a>
+    <a class="rail-link" href="/devices"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 17h6"/></svg> Devices</a>
+    <a class="rail-link" href="/rfid-cards"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/></svg> RFID cards</a>
+    <a class="rail-link" href="/roles"><svg viewBox="0 0 24 24"><path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Roles</a>
+    <a class="rail-link" href="/groups"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg> Groups</a>
+    <p class="rail-label">Operations</p>
+    <a class="rail-link active" href="/attendance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h5"/></svg> Attendance</a>
+    <a class="rail-link" href="/settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Work hours</a>
+    <a class="rail-link" href="/reports/daily"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/><path d="M3 20h18"/></svg> Reports</a>
+  </aside>
+
+  <main class="dashboard-main list-page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">Operations</p>
+        <h1>Attendance Calendar</h1>
+        <p class="subtle" style="color:var(--muted)">Every day of {{.MonthLabel}} at a glance. Pick a group, then click any day to see who clocked in and out.</p>
+      </div>
+      <div class="cal-toolbar">
+        {{if .Groups}}
+        <form method="get" action="/attendance/calendar" style="margin:0">
+          <input type="hidden" name="month" value="{{.Month}}">
+          <select name="group_id" onchange="this.form.submit()" style="border-radius:9999px; padding:7px 14px; border-color:var(--border-light); font-size:13px">
+            <option value="">All groups</option>
+            {{range .Groups}}
+            <option value="{{.ID}}" {{if eq .ID $.SelectedGroup}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </form>
+        {{end}}
+        <div class="cal-month-nav">
+          <a href="/attendance/calendar?month={{.PrevMonth}}{{if .SelectedGroup}}&group_id={{.SelectedGroup}}{{end}}" aria-label="Previous month" title="Previous month">
+            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+          </a>
+          <span class="cal-month-label">{{.MonthLabel}}</span>
+          <a href="/attendance/calendar?month={{.NextMonth}}{{if .SelectedGroup}}&group_id={{.SelectedGroup}}{{end}}" aria-label="Next month" title="Next month">
+            <svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+        </div>
+        {{if not .IsCurrentMonth}}
+        <a class="btn-pill btn-pill-secondary" href="/attendance/calendar{{if .SelectedGroup}}?group_id={{.SelectedGroup}}{{end}}">Today</a>
+        {{end}}
+        <a class="btn-pill btn-pill-secondary" href="/attendance">
+          <svg viewBox="0 0 24 24"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+          Back to logs
+        </a>
+      </div>
+    </div>
+
+    <section class="metric-grid">
+      <article class="mono-card metric-card">
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </div>
+        <div>
+          <span>Average rate</span>
+          <strong>{{.AvgRate}}%</strong>
+          <small>Across {{.ElapsedDays}} elapsed days</small>
+        </div>
+      </article>
+      <article class="mono-card metric-card">
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 5-5.5"/></svg>
+        </div>
+        <div>
+          <span>Present</span>
+          <strong>{{.SumPresent}}</strong>
+          <small>Person-days scanned</small>
+        </div>
+      </article>
+      <article class="mono-card metric-card">
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+        </div>
+        <div>
+          <span>Late</span>
+          <strong>{{.SumLate}}</strong>
+          <small>Past the grace window</small>
+        </div>
+      </article>
+      <article class="mono-card metric-card">
+        <div class="metric-icon">
+          <svg viewBox="0 0 24 24"><path d="M15 19a6 6 0 0 0-12 0"/><circle cx="9" cy="8" r="3.2"/><path d="m16.5 12.5 2 2 4-4"/></svg>
+        </div>
+        <div>
+          <span>Absent</span>
+          <strong>{{.SumAbsent}}</strong>
+          <small>Person-days missed</small>
+        </div>
+      </article>
+    </section>
+
+    <section class="mono-card cal-card">
+      <div class="cal-week-head">
+        {{range .Weekdays}}<span>{{.}}</span>{{end}}
+      </div>
+      <div class="cal-month">
+        {{range .Days}}
+        {{if .InMonth}}
+        <button type="button"
+          class="cal-cell {{if .Today}}is-today{{end}} {{if .Future}}is-future{{end}} {{if .HasData}}has-data{{end}}"
+          data-date="{{.Date}}"
+          title="{{.Title}}"
+          {{if .Future}}disabled{{end}}>
+          <span class="cal-cell-top">
+            <span class="cal-cell-day">{{.Day}}</span>
+            {{if .HasData}}<span class="cal-cell-rate">{{.Rate}}%</span>{{end}}
+          </span>
+          <span class="cal-cell-bars">
+            {{if gt .PresentOnly 0}}<i class="bar bar-present" style="flex:{{.PresentOnly}}"></i>{{end}}
+            {{if gt .Late 0}}<i class="bar bar-late" style="flex:{{.Late}}"></i>{{end}}
+            {{if gt .Absent 0}}<i class="bar bar-absent" style="flex:{{.Absent}}"></i>{{end}}
+          </span>
+          <span class="cal-cell-badges">
+            {{if .HasData}}<span class="cal-badge present">{{.Present}} in</span>{{end}}
+            {{if gt .Late 0}}<span class="cal-badge late">{{.Late}} late</span>{{end}}
+            {{if gt .Absent 0}}<span class="cal-badge absent">{{.Absent}} abs</span>{{end}}
+          </span>
+        </button>
+        {{else}}
+        <span class="cal-cell is-out" aria-hidden="true"></span>
+        {{end}}
+        {{end}}
+      </div>
+      <div class="calendar-foot">
+        <span class="legend-item"><i class="legend-dot present"></i> Attended</span>
+        <span class="legend-item"><i class="legend-dot late"></i> Late arrival</span>
+        <span class="legend-item"><i class="legend-dot absent"></i> Absent</span>
+        <span class="legend-item legend-level">Bar = share of {{.ActiveUsers}} active {{if eq .ActiveUsers 1}}person{{else}}people{{end}} in scope</span>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dayModal" class="modal day-modal" style="width:min(720px, calc(100vw - 32px))">
+    <div class="modal-header-bar">
+      <div>
+        <h2 id="dayModalTitle">—</h2>
+        <p class="subtle" id="dayModalSub" style="margin:2px 0 0; font-size:12px; color:var(--muted)"></p>
+      </div>
+      <button type="button" class="modal-close-btn" onclick="document.getElementById('dayModal').close()">✕</button>
+    </div>
+    <div class="day-modal-body">
+      <div class="day-summary" id="daySummary"></div>
+      <div class="day-lists">
+        <section class="day-list">
+          <h3>Clocked in <span class="badge-pill" id="dayPresentCount">0</span></h3>
+          <div class="day-list-scroll" id="dayPresentList"></div>
+        </section>
+        <section class="day-list">
+          <h3>Absent <span class="badge-pill" id="dayAbsentCount">0</span></h3>
+          <div class="day-list-scroll" id="dayAbsentList"></div>
+        </section>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/static/toast.js?v=20261001a"></script>
+  <script>
+    (() => {
+      const modal = document.getElementById('dayModal');
+      const title = document.getElementById('dayModalTitle');
+      const sub = document.getElementById('dayModalSub');
+      const summary = document.getElementById('daySummary');
+      const presentList = document.getElementById('dayPresentList');
+      const absentList = document.getElementById('dayAbsentList');
+      const groupID = {{if .SelectedGroup}}"{{.SelectedGroup}}"{{else}}""{{end}};
+
+      const chip = (label, cls) => {
+        const el = document.createElement('span');
+        el.className = 'time-chip ' + cls;
+        el.textContent = label;
+        return el;
+      };
+
+      const personRow = (name) => {
+        const row = document.createElement('div');
+        row.className = 'day-person';
+        const avatar = document.createElement('span');
+        avatar.className = 'day-avatar';
+        avatar.textContent = (name || '?').trim().charAt(0).toUpperCase() || '?';
+        const label = document.createElement('strong');
+        label.className = 'day-name';
+        label.textContent = name;
+        row.appendChild(avatar);
+        row.appendChild(label);
+        return row;
+      };
+
+      const statChip = (label, value, cls) => {
+        const el = document.createElement('span');
+        el.className = 'day-stat ' + cls;
+        el.innerHTML = '<strong></strong><span></span>';
+        el.firstChild.textContent = value;
+        el.lastChild.textContent = label;
+        return el;
+      };
+
+      function render(data) {
+        title.textContent = data.label || data.date;
+        sub.textContent = [groupID ? 'Group filter applied' : 'All groups', data.summary.present + ' clocked in', data.summary.absent + ' absent'].join(' · ');
+        summary.replaceChildren(
+          statChip('present', data.summary.present, 'present'),
+          statChip('late', data.summary.late, 'late'),
+          statChip('absent', data.summary.absent, 'absent')
+        );
+
+        presentList.replaceChildren();
+        document.getElementById('dayPresentCount').textContent = data.present.length;
+        if (!data.present.length) {
+          presentList.appendChild(emptyNote('Nobody clocked in on this day.'));
+        }
+        data.present.forEach(p => {
+          const row = personRow(p.name);
+          const chips = document.createElement('span');
+          chips.className = 'day-chips';
+          if (p.in) chips.appendChild(chip('IN ' + p.in, 'in'));
+          if (p.out) chips.appendChild(chip('OUT ' + p.out, 'out'));
+          if (p.in && !p.out) chips.appendChild(chip('still in', 'open'));
+          if (p.late) chips.appendChild(chip('late', 'late'));
+          row.appendChild(chips);
+          presentList.appendChild(row);
+        });
+
+        absentList.replaceChildren();
+        document.getElementById('dayAbsentCount').textContent = data.absent.length;
+        if (!data.absent.length) {
+          absentList.appendChild(emptyNote('Everyone was accounted for.'));
+        }
+        data.absent.forEach(p => {
+          const row = personRow(p.name);
+          if (p.email) {
+            const email = document.createElement('span');
+            email.className = 'subtle day-email';
+            email.textContent = p.email;
+            row.appendChild(email);
+          }
+          absentList.appendChild(row);
+        });
+      }
+
+      function emptyNote(text) {
+        const p = document.createElement('p');
+        p.className = 'day-empty';
+        p.textContent = text;
+        return p;
+      }
+
+      document.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+        cell.addEventListener('click', async () => {
+          if (cell.disabled) return;
+          title.textContent = cell.dataset.date;
+          sub.textContent = 'Loading day…';
+          summary.replaceChildren();
+          presentList.replaceChildren();
+          absentList.replaceChildren();
+          modal.showModal();
+
+          try {
+            const params = new URLSearchParams({ date: cell.dataset.date });
+            if (groupID) params.set('group_id', groupID);
+            const res = await fetch('/api/v1/attendance/day?' + params.toString());
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to load day');
+            render(data);
+          } catch (err) {
+            sub.textContent = '';
+            presentList.appendChild(emptyNote('Could not load this day: ' + err.message));
+            vtoast('Could not load day details.', { type: 'error', title: 'Calendar' });
+          }
+        });
+      });
+
+      modal.addEventListener('click', e => {
+        if (e.target === modal) modal.close();
+      });
+    })();
+  </script>
+</body>
+</html>

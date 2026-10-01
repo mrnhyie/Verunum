@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{.Title}} · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930b">
+  <link rel="stylesheet" href="/static/app.css?v=20261001a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -45,6 +45,11 @@
     <a class="rail-link" href="/admin/organizations/new">
       <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       New Organisation
+    </a>
+    <p class="rail-label">Communication</p>
+    <a class="rail-link" href="/platform/support">
+      <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.3-2.7A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>
+      Support Inbox
     </a>
     <div class="rail-footer">
       <form class="rail-logout" action="/auth/logout" method="post">
@@ -381,9 +386,37 @@
       </article>
     </section>
   </main>
+
+  <!-- Support chat widget -->
+  <button type="button" class="support-fab" id="supportFab" aria-label="Chat with support">
+    <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2.3-2.7A8 8 0 1 1 21 12z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></svg>
+    <span class="support-fab-badge" id="supportBadge" hidden></span>
+  </button>
+
+  <section class="support-panel" id="supportPanel" hidden aria-label="Support chat">
+    <div class="support-panel-head">
+      <div>
+        <strong>Verunum Support</strong>
+        <span>We usually reply in a few minutes</span>
+      </div>
+      <button type="button" class="support-panel-close" id="supportClose" aria-label="Close chat">
+        <svg viewBox="0 0 24 24"><path d="m9 8 6 8M15 8l-6 8"/></svg>
+      </button>
+    </div>
+    <div class="support-feed" id="supportFeed">
+      <p class="support-empty">Say hello — your message lands straight in our inbox.</p>
+    </div>
+    <form class="support-form" id="supportForm">
+      <textarea id="supportInput" rows="1" placeholder="Write a message…" maxlength="4000" required></textarea>
+      <button type="submit" class="support-send" id="supportSendBtn" aria-label="Send message">
+        <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+      </button>
+    </form>
+  </section>
   {{end}}
 
   {{if not .IsStaff}}
+  <script src="/static/toast.js?v=20261001a"></script>
   <script>
     (() => {
       const orgID = "{{.OrgID}}";
@@ -448,6 +481,152 @@
               bump('metricPresent', 1);
             }
           }
+        });
+      });
+    })();
+
+    (() => {
+      const fab = document.getElementById('supportFab');
+      const panel = document.getElementById('supportPanel');
+      const badge = document.getElementById('supportBadge');
+      if (!fab || !panel) return;
+      const closeBtn = document.getElementById('supportClose');
+      const feed = document.getElementById('supportFeed');
+      const form = document.getElementById('supportForm');
+      const input = document.getElementById('supportInput');
+      const sendBtn = document.getElementById('supportSendBtn');
+
+      const timeOf = iso => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      };
+
+      function bubble(m) {
+        const row = document.createElement('div');
+        row.className = 'support-msg ' + (m.sender === 'org' ? 'from-org' : 'from-support');
+        const body = document.createElement('div');
+        body.className = 'support-msg-body';
+        body.textContent = m.body || '';
+        row.appendChild(body);
+        const meta = document.createElement('span');
+        meta.className = 'support-msg-meta';
+        meta.textContent = (m.sender === 'org' ? 'You' : (m.author || 'Support')) + ' · ' + timeOf(m.created_at);
+        row.appendChild(meta);
+        return row;
+      }
+
+      function ids() {
+        return new Set([...feed.querySelectorAll('[data-mid]')].map(el => el.dataset.mid));
+      }
+
+      function add(m) {
+        if (m.id && ids().has(String(m.id))) return;
+        const empty = feed.querySelector('.support-empty');
+        if (empty) empty.remove();
+        const b = bubble(m);
+        if (m.id) b.dataset.mid = m.id;
+        feed.appendChild(b);
+        feed.scrollTop = feed.scrollHeight;
+      }
+
+      let loaded = false;
+      function open() {
+        panel.hidden = false;
+        fab.classList.add('open');
+        requestAnimationFrame(() => panel.classList.add('visible'));
+        setTimeout(() => panel.classList.add('visible'), 220);
+        badge.hidden = true;
+        if (!loaded) {
+          loaded = true;
+          fetch('/api/v1/support/messages')
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => { if (d) (d.messages || []).forEach(add); })
+            .catch(() => {});
+        }
+        input.focus();
+      }
+      function closePanel() {
+        panel.classList.remove('visible');
+        fab.classList.remove('open');
+        setTimeout(() => { panel.hidden = true; }, 220);
+      }
+
+      fab.addEventListener('click', () => (panel.hidden ? open() : closePanel()));
+      closeBtn.addEventListener('click', closePanel);
+
+      form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const body = input.value.trim();
+        if (!body) return;
+        sendBtn.disabled = true;
+        try {
+          const res = await fetch('/api/v1/support/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body })
+          });
+          if (!res.ok) throw new Error();
+          add(await res.json());
+          input.value = '';
+          input.style.height = 'auto';
+        } catch {
+          vtoast('Message could not be sent.', { type: 'error', title: 'Support' });
+        } finally {
+          sendBtn.disabled = false;
+          input.focus();
+        }
+      });
+
+      input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          form.requestSubmit();
+        }
+      });
+
+      fetch('/api/v1/support/messages?peek=1')
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d && d.unread > 0) badge.hidden = false; })
+        .catch(() => {});
+
+      const source = new EventSource('/api/v1/events');
+      source.addEventListener('support.message', e => {
+        let data;
+        try { data = JSON.parse(e.data); } catch { return; }
+        if (data.sender !== 'support') return;
+        vtoast(data.message || 'New message from Verunum Support', {
+          type: 'chat',
+          title: 'Verunum Support',
+          onClick: open
+        });
+        if (!panel.hidden && loaded) {
+          add({ id: data.message_id, sender: 'support', author: data.user_name, body: data.message, created_at: data.timestamp });
+        } else {
+          badge.hidden = false;
+        }
+      });
+    })();
+  </script>
+  {{end}}
+
+  {{if .IsStaff}}
+  <script src="/static/toast.js?v=20261001a"></script>
+  <script>
+    (() => {
+      const source = new EventSource('/api/v1/events');
+      source.addEventListener('support.message', e => {
+        let data;
+        try { data = JSON.parse(e.data); } catch { return; }
+        if (data.sender !== 'org') return;
+        vtoast(data.message || 'New support message', {
+          type: 'chat',
+          title: (data.org_name || 'Customer') + ' · Support',
+          onClick: () => { window.location.href = '/platform/support?org_id=' + encodeURIComponent(data.org_id); }
         });
       });
     })();

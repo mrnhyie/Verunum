@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Groups · Verunum</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260930b">
+  <link rel="stylesheet" href="/static/app.css?v=20261001a">
 </head>
 <body class="app-shell mono-theme">
   <header class="topbar">
@@ -60,12 +60,10 @@
           <strong style="color:var(--ink); font-size:15px">Organisation Groups</strong>
           <span class="badge-pill">{{len .Groups}}</span>
         </div>
-        <form class="section-search" method="post" action="/groups">
-          <svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/></svg>
-          <input name="name" placeholder="Add a group, e.g. Accounts" required>
-          <input name="location" placeholder="Location (optional)" style="max-width:160px">
-          <button class="btn-pill btn-pill-primary" style="padding:4px 12px; font-size:11px" type="submit">Add group</button>
-        </form>
+        <button type="button" class="btn-pill btn-pill-primary" id="newGroupBtn">
+          <svg viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>
+          New group
+        </button>
       </div>
 
       <div class="table-wrap">
@@ -104,7 +102,7 @@
             {{else}}
             <tr>
               <td colspan="5" class="table-empty">
-                No groups yet. Add one above to organise people and devices.
+                No groups yet. Add one to organise people and devices.
               </td>
             </tr>
             {{end}}
@@ -117,34 +115,52 @@
   <dialog id="groupModal" class="modal" style="width:min(420px, calc(100vw - 32px))">
     <form id="groupForm" method="post" action="/groups">
       <div class="modal-header-bar">
-        <h2>Edit group</h2>
+        <h2 id="groupModalTitle">New group</h2>
         <button type="button" class="modal-close-btn" onclick="document.getElementById('groupModal').close()">✕</button>
       </div>
       <div style="padding: 20px; display:flex; flex-direction:column; gap:14px">
         <label>
           Group name
-          <input name="name" id="groupName" required>
+          <input name="name" id="groupName" placeholder="e.g. Accounts" required>
         </label>
         <label>
           Location
-          <input name="location" id="groupLocation" placeholder="Optional">
+          <input name="location" id="groupLocation" placeholder="Optional — building, campus or block">
         </label>
+        <p class="subtle" style="margin:0; font-size:11.5px; color:var(--muted)">
+          People and devices can be assigned to this group from their pages.
+        </p>
       </div>
       <div class="modal-footer-bar">
         <button type="button" class="btn-pill btn-pill-secondary" onclick="document.getElementById('groupModal').close()">Cancel</button>
-        <button type="submit" class="btn-pill btn-pill-primary">Save group</button>
+        <button type="submit" class="btn-pill btn-pill-primary" id="groupSubmitBtn">Add group</button>
       </div>
     </form>
   </dialog>
 
+  <script src="/static/toast.js?v=20261001a"></script>
   <script>
     const groupModal = document.getElementById('groupModal');
-    document.querySelectorAll('.edit-group').forEach(b => b.onclick = () => {
-      document.getElementById('groupForm').action = '/groups/' + b.dataset.id;
-      document.getElementById('groupName').value = b.dataset.name;
-      document.getElementById('groupLocation').value = b.dataset.location || '';
+    const groupForm = document.getElementById('groupForm');
+
+    function openGroupModal(mode, data) {
+      data = data || {};
+      const editing = mode === 'edit';
+      document.getElementById('groupModalTitle').textContent = editing ? 'Edit group' : 'New group';
+      document.getElementById('groupSubmitBtn').textContent = editing ? 'Save group' : 'Add group';
+      groupForm.action = editing ? '/groups/' + data.id : '/groups';
+      document.getElementById('groupName').value = data.name || '';
+      document.getElementById('groupLocation').value = data.location || '';
       groupModal.showModal();
-    });
+      document.getElementById('groupName').focus();
+    }
+
+    document.getElementById('newGroupBtn').onclick = () => openGroupModal('create');
+    document.querySelectorAll('.edit-group').forEach(b => b.onclick = () => openGroupModal('edit', {
+      id: b.dataset.id,
+      name: b.dataset.name,
+      location: b.dataset.location
+    }));
   </script>
 </body>
 </html>

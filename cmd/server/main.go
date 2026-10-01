@@ -118,6 +118,7 @@ func main() {
 	admin.GET("/rfid-cards", a.cardsPage)
 	admin.GET("/rfid-cards/new", a.newCardPage)
 	admin.GET("/attendance", a.attendancePage)
+	admin.GET("/attendance/calendar", a.attendanceCalendarPage)
 	admin.GET("/reports/:period", a.report)
 	admin.GET("/devices/status", a.devicesStatus)
 	admin.POST("/users", a.createUser)
@@ -160,6 +161,7 @@ func main() {
 
 	platform := r.Group("/platform", a.adminAuth(), a.superAdmin())
 	platform.GET("/device-provisioning", a.platformProvisioningPage)
+	platform.GET("/support", a.supportPage)
 	platform.GET("/organisations", a.organizationsPage)
 	platform.GET("/organisations/:org_id", a.organizationProfilePage)
 	platform.POST("/organisations/:org_id/devices/:device_id/revoke", a.revokeDevice)
@@ -176,6 +178,14 @@ func main() {
 	adminAPI := r.Group("/api/v1", a.adminAuth())
 	adminAPI.POST("/platform/devices/pending", a.registerPendingDevice)
 	adminAPI.POST("/devices/:id/enroll-request", a.enrollRequest)
+	adminAPI.GET("/attendance/day", a.attendanceDayDetail)
+	adminAPI.GET("/support/messages", a.supportInbox)
+	adminAPI.POST("/support/messages", a.supportSend)
+
+	staffAPI := r.Group("/api/v1/platform", a.adminAuth(), a.superAdmin())
+	staffAPI.GET("/support/threads", a.supportThreads)
+	staffAPI.GET("/support/messages", a.supportThread)
+	staffAPI.POST("/support/messages", a.supportReply)
 
 	device := api.Group("/devices/:id", a.deviceAuth())
 	device.POST("/heartbeat", a.heartbeat)
@@ -1244,7 +1254,7 @@ func (a *app) createGroup(c *gin.Context) {
 	id, _ := res.LastInsertId()
 	a.audit(c, "create", "group", id, "", in)
 	if wantsHTML(c) {
-		c.Redirect(http.StatusFound, "/groups")
+		c.Redirect(http.StatusFound, "/groups?toast="+url.QueryEscape("Group “"+in.Name+"” added.")+"&toast_type=success")
 		return
 	}
 	c.JSON(201, gin.H{"id": id, "name": in.Name, "location": in.Location})
@@ -1293,7 +1303,7 @@ func (a *app) updateGroup(c *gin.Context) {
 	}
 	a.audit(c, "update", "group", int64(id), "", in)
 	if wantsHTML(c) {
-		c.Redirect(http.StatusFound, "/groups")
+		c.Redirect(http.StatusFound, "/groups?toast="+url.QueryEscape("Group “"+in.Name+"” updated.")+"&toast_type=success")
 		return
 	}
 	c.JSON(200, gin.H{"id": id, "name": in.Name, "location": in.Location})
@@ -1326,7 +1336,7 @@ func (a *app) deleteGroup(c *gin.Context) {
 	}
 	a.audit(c, "delete", "group", int64(id), "", gin.H{"name": name})
 	if wantsHTML(c) {
-		c.Redirect(http.StatusFound, "/groups")
+		c.Redirect(http.StatusFound, "/groups?toast="+url.QueryEscape("Group “"+name+"” deleted. Its people and devices were unassigned, not removed.")+"&toast_type=info")
 		return
 	}
 	c.Status(204)
@@ -1724,6 +1734,434 @@ func (a *app) attendancePage(c *gin.Context) {
 		"Groups": groups, "SelectedGroup": groupID,
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Month attendance calendar
+// ---------------------------------------------------------------------------
+
+type calMonthDay struct {
+	Date        string
+	Day         int
+	InMonth     bool
+	Today       bool
+	Future      bool
+	Weekend     bool
+	Present     int
+	PresentOnly int
+	Late        int
+	Absent      int
+	Rate        int
+	HasData     bool
+	Title       string
+}
+
+func fmtClock(ts string) string {
+	if ts == "" {
+		return ""
+	}
+	if t, err := time.Parse(time.RFC3339, ts); err == nil {
+		return t.Local().Format("15:04")
+	}
+	if len(ts) >= 16 {
+		return ts[11:16]
+	}
+	return ts
+}
+
+func (a *app) attendanceCalendarPage(c *gin.Context) {
+	org := a.org(c)
+	groups := a.groupList(org)
+	groupID, _ := strconv.Atoi(c.Query("group_id"))
+
+	now := time.Now()
+	first := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	if m, err := time.Parse("2006-01", c.Query("month")); err == nil {
+		first = time.Date(m.Year(), m.Month(), 1, 0, 0, 0, 0, time.Local)
+	}
+	next := first.AddDate(0, 1, 0)
+	today := now.Format("2006-01-02")
+
+	var activeUsers int
+	if groupID > 0 {
+		_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=? AND status='active' AND branch_id=?", org, groupID).Scan(&activeUsers)
+	} else {
+		_ = a.db.QueryRow("SELECT count(*) FROM users WHERE organization_id=? AND status='active'", org).Scan(&activeUsers)
+	}
+
+	// One grouped query for the whole month: present and late users per day.
+	type dayAgg struct{ present, late int }
+	agg := map[string]dayAgg{}
+	q := "SELECT substr(e.timestamp,1,10), count(DISTINCT e.user_id), count(DISTINCT CASE WHEN e.attendance_status='late' THEN e.user_id END) FROM attendance_events e"
+	args := []any{}
+	if groupID > 0 {
+		q += " JOIN users u ON u.id=e.user_id"
+	}
+	q += " WHERE e.organization_id=? AND e.timestamp>=? AND e.timestamp<?"
+	args = append(args, org, first.Format("2006-01-02"), next.Format("2006-01-02"))
+	if groupID > 0 {
+		q += " AND u.branch_id=?"
+		args = append(args, groupID)
+	}
+	q += " GROUP BY 1"
+	if rows, err := a.db.Query(q, args...); err == nil {
+		for rows.Next() {
+			var day string
+			var p, l int
+			if rows.Scan(&day, &p, &l) == nil {
+				agg[day] = dayAgg{p, l}
+			}
+		}
+		rows.Close()
+	}
+
+	// Sunday-start grid covering the full month.
+	gridStart := first.AddDate(0, 0, -int(first.Weekday()))
+	last := next.AddDate(0, 0, -1)
+	gridEnd := last.AddDate(0, 0, 6-int(last.Weekday()))
+	days := []calMonthDay{}
+	sumPresent, sumLate, sumAbsent, elapsed := 0, 0, 0, 0
+	for d := gridStart; !d.After(gridEnd); d = d.AddDate(0, 0, 1) {
+		key := d.Format("2006-01-02")
+		cell := calMonthDay{
+			Date:    key,
+			Day:     d.Day(),
+			InMonth: d.Month() == first.Month() && d.Year() == first.Year(),
+			Today:   key == today,
+			Future:  key > today,
+			Weekend: d.Weekday() == time.Saturday || d.Weekday() == time.Sunday,
+		}
+		if v, ok := agg[key]; ok {
+			cell.Present, cell.Late = v.present, v.late
+			cell.HasData = true
+		}
+		cell.PresentOnly = cell.Present - cell.Late
+		if cell.PresentOnly < 0 {
+			cell.PresentOnly = 0
+		}
+		if cell.InMonth && !cell.Future {
+			cell.Absent = activeUsers - cell.Present
+			if cell.Absent < 0 {
+				cell.Absent = 0
+			}
+			elapsed++
+			sumPresent += cell.Present
+			sumLate += cell.Late
+			sumAbsent += cell.Absent
+		}
+		if activeUsers > 0 {
+			cell.Rate = cell.Present * 100 / activeUsers
+		}
+		cell.Title = fmt.Sprintf("%s · %d attended", key, cell.Present)
+		if cell.Late > 0 {
+			cell.Title += fmt.Sprintf(" · %d late", cell.Late)
+		}
+		if cell.Absent > 0 && cell.InMonth && !cell.Future {
+			cell.Title += fmt.Sprintf(" · %d absent", cell.Absent)
+		}
+		days = append(days, cell)
+	}
+
+	avgRate := 0
+	if activeUsers > 0 && elapsed > 0 {
+		avgRate = sumPresent * 100 / (activeUsers * elapsed)
+	}
+	isCurrent := first.Year() == now.Year() && first.Month() == now.Month()
+
+	c.HTML(200, "calendar.html", gin.H{
+		"Title":          "Attendance Calendar",
+		"MonthLabel":     first.Format("January 2006"),
+		"Month":          first.Format("2006-01"),
+		"PrevMonth":      first.AddDate(0, -1, 0).Format("2006-01"),
+		"NextMonth":      first.AddDate(0, 1, 0).Format("2006-01"),
+		"Days":           days,
+		"Weekdays":       []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"},
+		"Groups":         groups,
+		"SelectedGroup":  groupID,
+		"ActiveUsers":    activeUsers,
+		"SumPresent":     sumPresent,
+		"SumLate":        sumLate,
+		"SumAbsent":      sumAbsent,
+		"AvgRate":        avgRate,
+		"ElapsedDays":    elapsed,
+		"IsCurrentMonth": isCurrent,
+	})
+}
+
+// attendanceDayDetail feeds the calendar's day popup: who clocked in/out and
+// who was absent on a given date, optionally limited to one group.
+func (a *app) attendanceDayDetail(c *gin.Context) {
+	org := a.org(c)
+	date := strings.TrimSpace(c.Query("date"))
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date"})
+		return
+	}
+	groupID, _ := strconv.Atoi(c.Query("group_id"))
+
+	type person struct {
+		Name string `json:"name"`
+		UUID string `json:"uuid,omitempty"`
+		In   string `json:"in,omitempty"`
+		Out  string `json:"out,omitempty"`
+		Late bool   `json:"late"`
+	}
+	present := []person{}
+	lateCount := 0
+	q := `SELECT u.uuid, u.full_name,
+		COALESCE(MIN(CASE WHEN e.event_type='clock_in' THEN e.timestamp END),''),
+		COALESCE(MAX(CASE WHEN e.event_type='clock_out' THEN e.timestamp END),''),
+		MAX(CASE WHEN e.attendance_status='late' THEN 1 ELSE 0 END)
+		FROM attendance_events e JOIN users u ON u.id=e.user_id
+		WHERE e.organization_id=? AND e.timestamp LIKE ?`
+	args := []any{org, date + "%"}
+	if groupID > 0 {
+		q += " AND u.branch_id=?"
+		args = append(args, groupID)
+	}
+	q += " GROUP BY e.user_id ORDER BY u.full_name"
+	if rows, err := a.db.Query(q, args...); err == nil {
+		for rows.Next() {
+			var name, uuid, in, out string
+			var late int
+			if rows.Scan(&uuid, &name, &in, &out, &late) == nil {
+				if late == 1 {
+					lateCount++
+				}
+				present = append(present, person{Name: name, UUID: uuid, In: fmtClock(in), Out: fmtClock(out), Late: late == 1})
+			}
+		}
+		rows.Close()
+	}
+
+	type absentPerson struct {
+		Name  string `json:"name"`
+		Email string `json:"email,omitempty"`
+	}
+	absent := []absentPerson{}
+	if date <= time.Now().Format("2006-01-02") {
+		aq := "SELECT u.full_name, coalesce(u.email,'') FROM users u WHERE u.organization_id=? AND u.status='active' AND NOT EXISTS (SELECT 1 FROM attendance_events e WHERE e.organization_id=u.organization_id AND e.user_id=u.id AND e.timestamp LIKE ?)"
+		aargs := []any{org, date + "%"}
+		if groupID > 0 {
+			aq += " AND u.branch_id=?"
+			aargs = append(aargs, groupID)
+		}
+		aq += " ORDER BY u.full_name"
+		if rows, err := a.db.Query(aq, aargs...); err == nil {
+			for rows.Next() {
+				var name, email string
+				if rows.Scan(&name, &email) == nil {
+					absent = append(absent, absentPerson{Name: name, Email: email})
+				}
+			}
+			rows.Close()
+		}
+	}
+
+	label := date
+	if d, err := time.Parse("2006-01-02", date); err == nil {
+		label = d.Format("Monday, 2 January 2006")
+	}
+	c.JSON(200, gin.H{
+		"date": date, "label": label,
+		"present": present, "absent": absent,
+		"summary": gin.H{"present": len(present), "late": lateCount, "absent": len(absent)},
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Customer support chat — org widget <-> platform inbox
+// ---------------------------------------------------------------------------
+
+type supportMessage struct {
+	ID        int64  `json:"id"`
+	Sender    string `json:"sender"`
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (a *app) userName(userID int, fallback string) string {
+	var name string
+	if a.db.QueryRow("SELECT coalesce(full_name,'') FROM users WHERE id=?", userID).Scan(&name) == nil && strings.TrimSpace(name) != "" {
+		return name
+	}
+	return fallback
+}
+
+func (a *app) orgName(orgID int) string {
+	var name string
+	_ = a.db.QueryRow("SELECT name FROM organizations WHERE id=?", orgID).Scan(&name)
+	return name
+}
+
+func scanSupportMessages(rows *sql.Rows) []supportMessage {
+	msgs := []supportMessage{}
+	for rows.Next() {
+		var m supportMessage
+		if rows.Scan(&m.ID, &m.Sender, &m.Author, &m.Body, &m.CreatedAt) == nil {
+			msgs = append(msgs, m)
+		}
+	}
+	// Queried newest-first for the limit; flip to chronological for chat display.
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs
+}
+
+// supportInbox is the org side: read the thread (marking support replies read)
+// or peek at the unread badge without touching read state.
+func (a *app) supportInbox(c *gin.Context) {
+	org := a.org(c)
+	if c.Query("peek") == "1" {
+		var unread int
+		_ = a.db.QueryRow("SELECT count(*) FROM support_messages WHERE organization_id=? AND sender='support' AND read_by_org=0", org).Scan(&unread)
+		c.JSON(200, gin.H{"unread": unread})
+		return
+	}
+	rows, err := a.db.Query("SELECT id,sender,author_name,body,created_at FROM support_messages WHERE organization_id=? ORDER BY id DESC LIMIT 200", org)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	msgs := scanSupportMessages(rows)
+	rows.Close()
+	var unread int
+	_ = a.db.QueryRow("SELECT count(*) FROM support_messages WHERE organization_id=? AND sender='support' AND read_by_org=0", org).Scan(&unread)
+	_, _ = a.db.Exec("UPDATE support_messages SET read_by_org=1 WHERE organization_id=? AND sender='support' AND read_by_org=0", org)
+	c.JSON(200, gin.H{"messages": msgs, "unread": unread})
+}
+
+// supportSend posts a customer message and pings the platform over SSE.
+func (a *app) supportSend(c *gin.Context) {
+	org := a.org(c)
+	var in struct {
+		Body string `json:"body"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(400, gin.H{"error": "invalid JSON"})
+		return
+	}
+	body := strings.TrimSpace(in.Body)
+	if body == "" {
+		c.JSON(400, gin.H{"error": "message body required"})
+		return
+	}
+	if len(body) > 4000 {
+		body = body[:4000]
+	}
+	author := a.userName(c.MustGet("claims").(claims).UserID, "Customer")
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := a.db.Exec("INSERT INTO support_messages(organization_id,sender,author_name,body,created_at,read_by_org,read_by_support) VALUES(?,?,?,?,?,1,0)",
+		org, "org", author, body, now)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	id, _ := res.LastInsertId()
+	a.hub.BroadcastSSE(ws.SSEEvent{
+		Event: "support.message", Sender: "org", OrgID: strconv.Itoa(org), OrgName: a.orgName(org),
+		UserName: author, Message: body, MessageID: id, Timestamp: now,
+	})
+	c.JSON(201, gin.H{"id": id, "sender": "org", "author": author, "body": body, "created_at": now})
+}
+
+// supportThreads lists every organisation that has ever written in.
+func (a *app) supportThreads(c *gin.Context) {
+	rows, err := a.db.Query(`SELECT m.organization_id, o.name,
+		COALESCE((SELECT x.body FROM support_messages x WHERE x.organization_id=m.organization_id ORDER BY x.id DESC LIMIT 1),''),
+		(SELECT count(*) FROM support_messages x WHERE x.organization_id=m.organization_id AND x.sender='org' AND x.read_by_support=0),
+		COALESCE((SELECT max(x.created_at) FROM support_messages x WHERE x.organization_id=m.organization_id),'')
+		FROM support_messages m JOIN organizations o ON o.id=m.organization_id
+		GROUP BY m.organization_id, o.name
+		ORDER BY 5 DESC`)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+	out := []gin.H{}
+	for rows.Next() {
+		var orgID, unread int
+		var name, last, lastAt string
+		if rows.Scan(&orgID, &name, &last, &unread, &lastAt) == nil {
+			out = append(out, gin.H{"org_id": orgID, "org_name": name, "last_body": last, "unread": unread, "last_at": lastAt})
+		}
+	}
+	c.JSON(200, gin.H{"threads": out})
+}
+
+// supportThread returns one organisation's conversation for the staff inbox.
+func (a *app) supportThread(c *gin.Context) {
+	orgID, err := strconv.Atoi(c.Query("org_id"))
+	if err != nil || orgID <= 0 {
+		c.JSON(400, gin.H{"error": "org_id required"})
+		return
+	}
+	if c.Query("peek") == "1" {
+		var unread int
+		_ = a.db.QueryRow("SELECT count(*) FROM support_messages WHERE organization_id=? AND sender='org' AND read_by_support=0", orgID).Scan(&unread)
+		c.JSON(200, gin.H{"unread": unread})
+		return
+	}
+	rows, err := a.db.Query("SELECT id,sender,author_name,body,created_at FROM support_messages WHERE organization_id=? ORDER BY id DESC LIMIT 200", orgID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	msgs := scanSupportMessages(rows)
+	rows.Close()
+	var unread int
+	_ = a.db.QueryRow("SELECT count(*) FROM support_messages WHERE organization_id=? AND sender='org' AND read_by_support=0", orgID).Scan(&unread)
+	_, _ = a.db.Exec("UPDATE support_messages SET read_by_support=1 WHERE organization_id=? AND sender='org' AND read_by_support=0", orgID)
+	c.JSON(200, gin.H{"messages": msgs, "unread": unread, "org_name": a.orgName(orgID)})
+}
+
+// supportReply posts a platform reply back to the customer's dashboard.
+func (a *app) supportReply(c *gin.Context) {
+	var in struct {
+		OrgID int    `json:"org_id"`
+		Body  string `json:"body"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(400, gin.H{"error": "invalid JSON"})
+		return
+	}
+	body := strings.TrimSpace(in.Body)
+	if in.OrgID <= 0 || body == "" {
+		c.JSON(400, gin.H{"error": "org_id and body required"})
+		return
+	}
+	if len(body) > 4000 {
+		body = body[:4000]
+	}
+	var exists int
+	if a.db.QueryRow("SELECT count(*) FROM organizations WHERE id=?", in.OrgID).Scan(&exists) != nil || exists == 0 {
+		c.JSON(404, gin.H{"error": "unknown organisation"})
+		return
+	}
+	author := a.userName(c.MustGet("claims").(claims).UserID, "Support")
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := a.db.Exec("INSERT INTO support_messages(organization_id,sender,author_name,body,created_at,read_by_org,read_by_support) VALUES(?,?,?,?,?,0,1)",
+		in.OrgID, "support", author, body, now)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	id, _ := res.LastInsertId()
+	a.hub.BroadcastSSE(ws.SSEEvent{
+		Event: "support.message", Sender: "support", OrgID: strconv.Itoa(in.OrgID), OrgName: a.orgName(in.OrgID),
+		UserName: author, Message: body, MessageID: id, Timestamp: now,
+	})
+	c.JSON(201, gin.H{"id": id, "sender": "support", "author": author, "body": body, "created_at": now})
+}
+
+// supportPage is the platform-side inbox UI.
+func (a *app) supportPage(c *gin.Context) {
+	orgID, _ := strconv.Atoi(c.Query("org_id"))
+	c.HTML(200, "support.html", gin.H{"Title": "Support Inbox", "SelectedOrg": orgID})
+}
+
 func (a *app) devicesStatus(c *gin.Context) {
 	rows, _ := a.db.Query("SELECT id,name,status,last_heartbeat FROM devices WHERE organization_id=?", a.org(c))
 	defer rows.Close()
